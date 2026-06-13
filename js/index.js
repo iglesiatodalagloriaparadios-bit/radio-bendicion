@@ -37,7 +37,7 @@ $(document).ready(function () {
     const nowPlayingText = $('.now-playing');
 
     // URL de la API de AzuraCast para metadatos "Now Playing"
-    const API_URL = 'https://13.140.170.190/api/nowplaying_static/radio_bendici%C3%B3n.json';
+    const API_URL = 'https://radio.radiobendicion.cl/api/nowplaying_static/radio_bendici%C3%B3n.json';
 
     function updateNowPlaying() {
         $.getJSON(API_URL, function(data) {
