@@ -1132,3 +1132,24 @@
     transform: translateX(calc(100vw + 2200px));
   }
 }
+
+.install-btn {
+  display: inline-flex;
+  width: 100%;
+  margin-top: 16px;
+  justify-content: center;
+  align-items: center;
+  gap: 8px;
+  min-height: 48px;
+  font-size: 14px;
+  background: linear-gradient(135deg, #10b981, #059669);
+  color: white;
+  border: none;
+  box-shadow: 0 10px 25px rgba(16, 185, 129, 0.2);
+}
+
+.install-btn:hover {
+  background: linear-gradient(135deg, #059669, #047857);
+  box-shadow: 0 12px 30px rgba(16, 185, 129, 0.3);
+  transform: translateY(-2px);
+}

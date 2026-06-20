@@ -13,6 +13,37 @@ $(document).ready(function () {
         });
     }
 
+    // --- Lógica de Instalación de PWA ---
+    let deferredPrompt;
+    const installAppBtn = $('#installAppBtn');
+
+    window.addEventListener('beforeinstallprompt', (e) => {
+        // Prevenir el banner por defecto en navegadores móviles
+        e.preventDefault();
+        // Guardar el evento para dispararlo al hacer clic
+        deferredPrompt = e;
+        // Mostrar el botón personalizado de instalación
+        installAppBtn.show();
+    });
+
+    installAppBtn.on('click', async () => {
+        if (!deferredPrompt) return;
+        // Mostrar prompt oficial de instalación
+        deferredPrompt.prompt();
+        // Esperar la elección del usuario
+        const { outcome } = await deferredPrompt.userChoice;
+        console.log(`Elección de instalación: ${outcome}`);
+        // Limpiar el evento guardado
+        deferredPrompt = null;
+        // Ocultar botón
+        installAppBtn.hide();
+    });
+
+    window.addEventListener('appinstalled', (event) => {
+        console.log('PWA instalada correctamente');
+        installAppBtn.hide();
+    });
+
     const menuBtn = $('#menuBtn');
     const menu = $('#menu');
 
