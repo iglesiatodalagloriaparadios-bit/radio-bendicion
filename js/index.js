@@ -134,7 +134,7 @@ $(document).ready(function () {
 
     // --- Detección de Transmisión en Vivo en YouTube ---
     const YOUTUBE_CHANNEL_ID = 'YOUR_YOUTUBE_CHANNEL_ID'; // Reemplazar con el ID de tu canal
-    const YOUTUBE_API_KEY = 'YOUR_YOUTUBE_API_KEY';       // Reemplazar con tu API Key de Google
+    const YOUTUBE_API_KEY = 'AIzaSyCKVAT0CX0Oj6He8CCEIDzsdenEHI1yn9E';       // API Key de Google Developer
     const ytLiveBtn = $('#ytLiveBtn');
 
     async function checkYouTubeLive() {
