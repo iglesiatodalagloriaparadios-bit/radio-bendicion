@@ -132,6 +132,44 @@ $(document).ready(function () {
         playBtn.show();
     });
 
+    // --- Detección de Transmisión en Vivo en YouTube ---
+    const YOUTUBE_CHANNEL_ID = 'YOUR_YOUTUBE_CHANNEL_ID'; // Reemplazar con el ID de tu canal
+    const YOUTUBE_API_KEY = 'YOUR_YOUTUBE_API_KEY';       // Reemplazar con tu API Key de Google
+    const ytLiveBtn = $('#ytLiveBtn');
+
+    async function checkYouTubeLive() {
+        if (!YOUTUBE_CHANNEL_ID || !YOUTUBE_API_KEY || YOUTUBE_CHANNEL_ID.startsWith('YOUR_') || YOUTUBE_API_KEY.startsWith('YOUR_')) {
+            ytLiveBtn.hide();
+            return;
+        }
+
+        const API_URL = `https://www.googleapis.com/youtube/v3/search?part=snippet&channelId=${YOUTUBE_CHANNEL_ID}&eventType=live&type=video&key=${YOUTUBE_API_KEY}`;
+
+        try {
+            const response = await fetch(API_URL);
+            const data = await response.json();
+
+            if (data && data.items && data.items.length > 0) {
+                const liveVideo = data.items[0];
+                const videoId = liveVideo.id.videoId;
+                
+                // Enlazar al video en vivo actual
+                ytLiveBtn.attr('href', `https://www.youtube.com/watch?v=${videoId}`);
+                ytLiveBtn.css('display', 'inline-flex');
+            } else {
+                ytLiveBtn.hide();
+            }
+        } catch (error) {
+            console.error('Error al verificar la transmisión en vivo de YouTube:', error);
+            ytLiveBtn.hide();
+        }
+    }
+
+    // Verificación inicial
+    checkYouTubeLive();
+    // Verificar cada 5 minutos (300000 ms) para no agotar la cuota de la API de Google
+    setInterval(checkYouTubeLive, 300000);
+
     // --- Lógica de los Carruseles ---
     $('.carousel-btn').on('click', function() {
         const carouselId = $(this).data('carousel');

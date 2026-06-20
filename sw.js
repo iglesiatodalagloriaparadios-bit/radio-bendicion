@@ -1,4 +1,4 @@
-const CACHE_NAME = 'radio-bendicion-v5';
+const CACHE_NAME = 'radio-bendicion-v6';
 const ASSETS_TO_CACHE = [
   '/',
   '/css/styles.css',
