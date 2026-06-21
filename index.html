@@ -8,6 +8,7 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@500;700&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="css/styles.css">
+  <link rel="icon" type="image/png" href="images/logo-192.png">
 
   <!-- Configuración de PWA y Manifiesto -->
   <link rel="manifest" href="manifest.json">
@@ -25,7 +26,7 @@
     <div class="cloud cloud-2"></div>
     <div class="cloud cloud-3"></div>
   </div>
-  <a href="#radio" class="floating-radio-btn" aria-label="Ir a la Radio">📻</a>
+
   <header>
     <div class="container navbar">
       <a href="#inicio" class="brand">
@@ -33,19 +34,22 @@
         <span>Radio Bendición<br> Iglesia Toda la Gloria para Dios</span>
       </a>
 
-      <button class="menu-btn" id="menuBtn" aria-label="Abrir menú">☰</button>
-
       <nav id="menu">
         <ul>
-          <li><a href="#inicio">Inicio</a></li>
-          <li><a href="#nosotros">Nosotros</a></li>
-          <li><a href="#vision">Visión</a></li>
-          <li><a href="#horarios">Horarios</a></li>
-          <li><a href="#ministerios">Ministerios</a></li>
-          <li><a href="#radio">Radio</a></li>
-          <li><a href="#contacto">Contacto</a></li>
+          <li><a href="#inicio">🎙️ Radio en Vivo</a></li>
+          <li><a href="#iglesia">⛪ Nuestra Iglesia</a></li>
+          <li><a href="#devocional">📖 Devocional</a></li>
+          <li><a href="#horarios">📅 Horarios</a></li>
+          <li><a href="#contacto">📞 Contacto</a></li>
         </ul>
       </nav>
+
+      <div class="header-actions">
+        <button id="themeToggle" class="theme-toggle-btn" aria-label="Cambiar tema">
+          <span class="theme-switch-knob">☀️</span>
+        </button>
+        <button class="menu-btn" id="menuBtn" aria-label="Abrir menú">☰</button>
+      </div>
     </div>
   </header>
 
@@ -53,12 +57,14 @@
     <section class="hero" id="inicio">
       <div class="container hero-grid">
         <div class="radio-player-card" id="radio">
+          <div class="radio-player-bg bg-0" id="playerBg1"></div>
+          <div class="radio-player-bg bg-1" id="playerBg2" style="opacity: 0;"></div>
           <div class="radio-live">
             <span class="pulse"></span>
             En vivo
           </div>
           <h3>Radio Bendición</h3>
-          <p class="now-playing">Sintonizando la señal...</p>
+          <p class="now-playing">Estás escuchando: Sintonizando la señal...</p>
           
           <div class="custom-player">
             <audio id="radioAudio" preload="none">
@@ -83,25 +89,129 @@
           <p class="radio-help">Escucha nuestra programación 24/7</p>
           <a id="ytLiveBtn" href="#" target="_blank" rel="noopener" class="btn yt-live-btn" style="display: none;">
             <span class="live-indicator-dot"></span>
-            <span>📺 Ver en Vivo (YouTube)</span>
+            <svg class="btn-icon" viewBox="0 0 24 24" width="20" height="20" fill="currentColor">
+              <path d="M23.498 6.163a3.003 3.003 0 0 0-2.11-2.11C19.518 3.545 12 3.545 12 3.545s-7.518 0-9.388.508a3.003 3.003 0 0 0-2.11 2.11C0 8.033 0 12 0 12s0 3.967.502 5.837a3.003 3.003 0 0 0 2.11 2.11c1.87.508 9.388.508 9.388.508s7.518 0 9.388-.508a3.003 3.003 0 0 0 2.11-2.11C24 15.967 24 12 24 12s0-3.967-.502-5.837zM9.545 15.568V8.432L15.818 12l-6.273 3.568z"/>
+            </svg>
+            <span>Ver en Vivo (YouTube)</span>
           </a>
           <button id="installAppBtn" class="btn btn-primary install-btn" style="display: none;">
             <span>📲</span> Instalar Aplicación
           </button>
+          <button id="shareAppBtn" class="btn btn-secondary share-btn" style="margin-top: 12px; width: 100%;">
+            <svg class="btn-icon" viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <circle cx="18" cy="5" r="3"></circle>
+              <circle cx="6" cy="12" r="3"></circle>
+              <circle cx="18" cy="19" r="3"></circle>
+              <line x1="8.59" y1="13.51" x2="15.42" y2="17.49"></line>
+              <line x1="15.41" y1="6.51" x2="8.59" y2="10.49"></line>
+            </svg>
+            <span>Compartir Señal</span>
+          </button>
+          <button id="prayerBtn" class="btn btn-secondary prayer-btn" style="margin-top: 12px; width: 100%;">
+            <span>🙏</span> Pedir Oración
+          </button>
         </div>
 
         <div>
+          <div class="eyebrow">🎙️ Al Aire</div>
+          <h1>Radio Bendición</h1>
+          <p>
+            Sintoniza nuestra transmisión 24/7 y edifica tu vida con la mejor música cristiana, reflexiones de fe y prédicas llenas de esperanza. Llevamos la palabra de Dios directamente a tu hogar o lugar de trabajo.
+          </p>
+          <div class="quote">
+            “La voz de la esperanza, transmitiendo bendición para todo el mundo.”
+          </div>
+          <div class="hero-actions">
+            <a class="btn btn-primary" href="#devocional">Leer devocional</a>
+            <a class="btn btn-secondary" href="https://www.youtube.com/@RadioBendicion-i9x" target="_blank" rel="noopener">
+              <svg class="btn-icon" viewBox="0 0 24 24" width="20" height="20" fill="currentColor">
+                <path d="M23.498 6.163a3.003 3.003 0 0 0-2.11-2.11C19.518 3.545 12 3.545 12 3.545s-7.518 0-9.388.508a3.003 3.003 0 0 0-2.11 2.11C0 8.033 0 12 0 12s0 3.967.502 5.837a3.003 3.003 0 0 0 2.11 2.11c1.87.508 9.388.508 9.388.508s7.518 0 9.388-.508a3.003 3.003 0 0 0 2.11-2.11C24 15.967 24 12 24 12s0-3.967-.502-5.837zM9.545 15.568V8.432L15.818 12l-6.273 3.568z"/>
+              </svg>
+              Ver en YouTube
+            </a>
+            <button id="openSocialModalBtn" class="btn btn-secondary">
+              <svg class="btn-icon" viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <circle cx="18" cy="5" r="3"></circle>
+                <circle cx="6" cy="12" r="3"></circle>
+                <circle cx="18" cy="19" r="3"></circle>
+                <line x1="8.59" y1="13.51" x2="15.42" y2="17.49"></line>
+                <line x1="15.41" y1="6.51" x2="8.59" y2="10.49"></line>
+              </svg>
+              Redes y Contacto
+            </button>
+          </div>
+        </div>
+      </div>
+    </section>
+
+
+
+    <!-- Church Welcome Section -->
+    <section class="church-welcome" id="iglesia">
+      <div class="container hero-grid">
+        <div>
           <div class="eyebrow">✨ Bienvenidos a casa</div>
-          <h1>Una familia en Cristo</h1>
+          <h2>Una familia en Cristo</h2>
           <p>
             Somos una iglesia cristiana pentecostal con 15 años de historia, donde creemos que cada persona es importante para Dios. Aquí encontrarás un lugar para crecer en tu fe, compartir en comunidad y experimentar el amor de Cristo.
           </p>
-          <div class="quote">
-            “Una familia en Cristo, viviendo Su Palabra y compartiendo esperanza.”
-          </div>
           <div class="hero-actions">
             <a class="btn btn-primary" href="#horarios">Ver reuniones</a>
             <a class="btn btn-secondary" href="#contacto">Visítanos</a>
+          </div>
+        </div>
+        
+        <div class="hero-card">
+          <div class="floating-card">
+            <h3>Nuestra Comunidad</h3>
+            <p>Un lugar donde todos son bienvenidos a experimentar el amor de Dios y crecer juntos.</p>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section id="devocional">
+      <div class="container">
+        <div class="section-title">
+          <div class="tag">Mensaje de hoy</div>
+          <h2>Devocional Diario</h2>
+          <p>Alimenta tu espíritu con la Palabra de Dios para el día de hoy.</p>
+        </div>
+
+        <div class="devotional-card">
+          <div class="devotional-header">
+            <span class="devotional-date" id="devotionalDate">Cargando fecha...</span>
+            <div class="devotional-actions">
+              <button id="devotionalNotifyBtn" class="devotional-notify-btn" aria-label="Notificaciones de Devocionales">
+                <span class="bell-icon">🔔</span> <span class="btn-text">Recibir Avisos</span>
+              </button>
+            </div>
+          </div>
+          
+          <div class="devotional-body">
+            <h3 class="devotional-title" id="devotionalTitle">Cargando título...</h3>
+            <div class="devotional-verse-container">
+              <p class="devotional-verse-text" id="devotionalVerseText">"..."</p>
+              <span class="devotional-verse-cite" id="devotionalVerseCite">Cargando cita...</span>
+            </div>
+            
+            <div class="devotional-reflection" id="devotionalReflection">
+              Cargando reflexión...
+            </div>
+
+            <div class="devotional-prayer-box">
+              <strong>🙏 Guía de oración:</strong>
+              <p id="devotionalPrayer">Cargando oración...</p>
+            </div>
+          </div>
+
+          <div class="devotional-footer">
+            <button id="shareDevotionalWs" class="btn btn-primary share-devotional-btn">
+              <span>💬</span> Compartir por WhatsApp
+            </button>
+            <button id="copyDevotionalBtn" class="btn btn-secondary copy-devotional-btn">
+              <span>📋</span> Copiar Texto
+            </button>
           </div>
         </div>
       </div>
@@ -279,7 +389,10 @@
           <p>
             Hay un lugar para ti. No importa tu historia, aquí puedes comenzar un nuevo camino con Dios, rodeado de personas que te acompañarán y apoyarán.
           </p>
-          <a class="btn btn-primary" href="https://www.instagram.com/iglesiatodalagloriaparadios" target="_blank" rel="noopener">Visitar Instagram</a>
+          <div style="display: flex; flex-direction: column; gap: 12px; max-width: 280px; margin: 0 auto;">
+            <a class="btn btn-primary" href="https://www.instagram.com/iglesiatodalagloriaparadios" target="_blank" rel="noopener">Visitar Instagram</a>
+            <button id="prayerBtnCta" class="btn btn-secondary">🙏 Petición de Oración</button>
+          </div>
         </div>
 
         <div class="contact-box">
@@ -292,6 +405,17 @@
             <div class="contact-info">
               <strong>Dirección</strong>
               <p>Los Nogales 140, Padre Hurtado.</p>
+            </div>
+            <span class="contact-arrow">→</span>
+          </a>
+
+          <a href="https://wa.me/56957906866" target="_blank" rel="noopener" class="contact-row contact-btn">
+            <div class="contact-icon">
+              <img src="https://upload.wikimedia.org/wikipedia/commons/6/6b/WhatsApp.svg" alt="WhatsApp">
+            </div>
+            <div class="contact-info">
+              <strong>WhatsApp</strong>
+              <p>+56 9 5790 6866</p>
             </div>
             <span class="contact-arrow">→</span>
           </a>
@@ -317,6 +441,28 @@
             </div>
             <span class="contact-arrow">→</span>
           </a>
+
+          <a href="https://www.youtube.com/@RadioBendicion-i9x" target="_blank" rel="noopener" class="contact-row contact-btn">
+            <div class="contact-icon">
+              <img src="https://upload.wikimedia.org/wikipedia/commons/0/09/YouTube_full-color_icon_%282017%29.svg" alt="YouTube">
+            </div>
+            <div class="contact-info">
+              <strong>YouTube</strong>
+              <p>@RadioBendicion-i9x</p>
+            </div>
+            <span class="contact-arrow">→</span>
+          </a>
+
+          <a href="https://www.tiktok.com/@radio.bendicion.online" target="_blank" rel="noopener" class="contact-row contact-btn">
+            <div class="contact-icon">
+              <img src="https://upload.wikimedia.org/wikipedia/commons/a/a6/Tiktok_icon.svg" alt="TikTok">
+            </div>
+            <div class="contact-info">
+              <strong>TikTok</strong>
+              <p>@radio.bendicion.online</p>
+            </div>
+            <span class="contact-arrow">→</span>
+          </a>
         </div>
       </div>
     </section>
@@ -328,7 +474,270 @@
     </div>
   </footer>
 
+  <!-- Banner de instalación para iOS (Safari) -->
+  <div id="iosInstallBanner" class="ios-install-banner">
+    <div class="ios-install-banner-icon">📻</div>
+    <div class="ios-install-banner-info">
+      <h4>Instala nuestra App</h4>
+      <p>Escucha la señal en vivo sin interrupciones y accede más rápido.</p>
+    </div>
+    <button id="closeIosBannerBtn" class="ios-install-banner-close" aria-label="Cerrar">&times;</button>
+  </div>
+
+  <!-- Modal de Guía de Instalación para iOS -->
+  <div id="iosGuideModal" class="ios-guide-modal">
+    <div class="ios-guide-content">
+      <button id="closeIosModalBtn" class="ios-guide-close" aria-label="Cerrar">&times;</button>
+      
+      <div class="ios-guide-header">
+        <h3>Instalar en tu iPhone</h3>
+        <p>Sigue estos sencillos pasos para añadir Radio Bendición a tu pantalla de inicio.</p>
+        <p style="font-size: 11px; color: var(--primary); margin-top: 6px; font-weight: 600;">⚠️ Asegúrate de abrir esta web en <strong>Safari</strong>.</p>
+      </div>
+
+      <div class="ios-steps-indicator">
+        <span class="ios-step-dot active" data-step="1"></span>
+        <span class="ios-step-dot" data-step="2"></span>
+        <span class="ios-step-dot" data-step="3"></span>
+        <span class="ios-step-dot" data-step="4"></span>
+      </div>
+
+      <div class="ios-steps-container">
+        <!-- Paso 1 -->
+        <div class="ios-step-slide active" data-step="1">
+          <span class="ios-step-number">1</span>
+          <p class="ios-step-instruction">Toca los <strong>tres puntos (...)</strong> a la derecha en la barra de navegación inferior (al lado de <strong>radiobendicion.cl</strong>).</p>
+          <div class="safari-mockup">
+            <div class="safari-body-mock" style="height: 100px; justify-content: center; background: #ffffff; padding: 10px;">
+              <!-- Tarjeta simplificada del reproductor -->
+              <div style="width: 100%; border: 1px solid rgba(0,0,0,0.06); border-radius: 12px; padding: 8px; box-sizing: border-box; text-align: center; background: #fafafa;">
+                <div style="font-size: 10px; font-weight: bold; color: var(--primary); margin-bottom: 4px;">🔴 EN VIVO</div>
+                <div style="font-size: 11px; font-weight: 600; color: #0f172a; margin-bottom: 6px;">Radio Bendición</div>
+                <div style="margin: 0 auto; background: var(--success); color: white; font-size: 9px; font-weight: bold; padding: 4px; border-radius: 6px; width: 80%; display: flex; align-items: center; justify-content: center; gap: 4px;">
+                  <span>📲</span> Instalar Aplicación
+                </div>
+              </div>
+            </div>
+            <div style="display: flex; align-items: center; justify-content: space-between; padding: 10px 14px; background: #f8fafc; border-top: 1px solid rgba(0,0,0,0.08); height: 54px; box-sizing: border-box;">
+              <span style="font-size: 20px; color: #64748b; opacity: 0.8; user-select: none;">‹</span>
+              <div style="display: flex; align-items: center; background: #e2e8f0; border-radius: 10px; padding: 4px 10px; flex: 1; margin: 0 12px; justify-content: space-between; font-size: 11px; color: #475569; height: 28px; box-sizing: border-box; border: 1px solid rgba(0,0,0,0.04);">
+                <span style="font-size: 11px; opacity: 0.7;">📄</span>
+                <span style="font-weight: 500;">radiobendicion.cl</span>
+                <span style="font-size: 11px; opacity: 0.7;">↻</span>
+              </div>
+              <div class="safari-btn-mock share-action" style="font-size: 16px; font-weight: bold; color: #007aff; display: flex; align-items: center; justify-content: center; width: 28px; height: 28px; background: rgba(0, 122, 255, 0.08); border-radius: 50%;">•••</div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Paso 2 -->
+        <div class="ios-step-slide" data-step="2">
+          <span class="ios-step-number">2</span>
+          <p class="ios-step-instruction">En el menú que se despliega desde abajo, selecciona la opción <strong>Compartir</strong>.</p>
+          <div class="safari-mockup" style="background: #f1f5f9; padding: 8px; display: flex; flex-direction: column; justify-content: flex-end; height: 154px; box-sizing: border-box;">
+            <div style="background: rgba(255,255,255,0.98); border-radius: 14px; box-shadow: 0 4px 20px rgba(0,0,0,0.08); overflow: hidden; display: flex; flex-direction: column; font-size: 11px; border: 1px solid rgba(0,0,0,0.05);">
+              <!-- Compartir (Destacado) -->
+              <div class="safari-sheet-item highlighted" style="padding: 8px 12px; display: flex; align-items: center; justify-content: space-between; border-bottom: 1px solid rgba(0,0,0,0.05); background: rgba(0, 122, 255, 0.04); box-sizing: border-box;">
+                <div style="display: flex; align-items: center; gap: 8px; color: #007aff; font-weight: 700;">
+                  <span style="font-size: 13px;">📤</span>
+                  <span>Compartir</span>
+                </div>
+                <span style="font-size: 14px; animation: bounce 2s infinite; display: inline-block;">☝️</span>
+              </div>
+              <!-- Agregar a Marcadores -->
+              <div style="padding: 8px 12px; display: flex; align-items: center; gap: 8px; border-bottom: 1px solid rgba(0,0,0,0.05); color: #334155; opacity: 0.9; box-sizing: border-box;">
+                <span style="font-size: 13px;">🔖</span>
+                <span>Agregar a Marcadores</span>
+              </div>
+              <!-- Nueva pestaña -->
+              <div style="padding: 8px 12px; display: flex; align-items: center; gap: 8px; color: #334155; opacity: 0.9; box-sizing: border-box;">
+                <span style="font-size: 13px;">➕</span>
+                <span>Nueva pestaña</span>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Paso 3 -->
+        <div class="ios-step-slide" data-step="3">
+          <span class="ios-step-number">3</span>
+          <p class="ios-step-instruction">En la hoja de compartir, desliza hacia la derecha la fila de botones grises y pulsa en <strong>Ver más</strong>.</p>
+          <div class="safari-mockup" style="background: rgba(115, 115, 115, 0.2); padding: 8px; display: flex; flex-direction: column; justify-content: flex-end; height: 154px; box-sizing: border-box;">
+            <!-- Simulación del Share Sheet de iOS -->
+            <div style="background: #ffffff; border-radius: 16px 16px 12px 12px; box-shadow: 0 -4px 15px rgba(0,0,0,0.1); padding: 10px 8px; display: flex; flex-direction: column; gap: 10px; border: 1px solid rgba(0,0,0,0.05); box-sizing: border-box;">
+              <!-- Header -->
+              <div style="display: flex; align-items: center; gap: 8px; padding-bottom: 6px; border-bottom: 1px solid rgba(0,0,0,0.06);">
+                <div style="width: 24px; height: 24px; background: var(--primary); border-radius: 6px; display: flex; align-items: center; justify-content: center; color: white; font-size: 12px; font-weight: bold;">B</div>
+                <div style="display: flex; flex-direction: column; text-align: left; line-height: 1.1;">
+                  <span style="font-size: 9px; font-weight: 700; color: #1e293b;">Iglesia Toda la Gloria para Dios</span>
+                  <span style="font-size: 8px; color: #64748b;">radiobendicion.cl</span>
+                </div>
+              </div>
+              <!-- Fila de iconos redondos de acción -->
+              <div style="display: flex; justify-content: space-around; align-items: flex-start; padding-top: 4px;">
+                <!-- Copiar -->
+                <div style="display: flex; flex-direction: column; align-items: center; gap: 4px; width: 48px;">
+                  <div style="width: 32px; height: 32px; background: #f1f5f9; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 14px; color: #475569;">📄</div>
+                  <span style="font-size: 7px; color: #64748b; text-align: center; line-height: 1;">Copiar</span>
+                </div>
+                <!-- Marcadores -->
+                <div style="display: flex; flex-direction: column; align-items: center; gap: 4px; width: 48px;">
+                  <div style="width: 32px; height: 32px; background: #f1f5f9; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 14px; color: #475569;">🔖</div>
+                  <span style="font-size: 7px; color: #64748b; text-align: center; line-height: 1;">Agregar a...</span>
+                </div>
+                <!-- Ver más (Destacado) -->
+                <div style="display: flex; flex-direction: column; align-items: center; gap: 4px; width: 48px; position: relative;">
+                  <div class="safari-btn-mock share-action" style="width: 32px; height: 32px; background: rgba(0, 122, 255, 0.08); border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 14px; color: #007aff; border: 1.5px solid #007aff; box-sizing: border-box; margin: 0;">∨</div>
+                  <span style="font-size: 7px; font-weight: 700; color: #007aff; text-align: center; line-height: 1;">Ver más</span>
+                  <span style="font-size: 16px; position: absolute; top: -14px; left: 24px; animation: bounce 2s infinite;">☝️</span>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Paso 4 -->
+        <div class="ios-step-slide" data-step="4">
+          <span class="ios-step-number">4</span>
+          <p class="ios-step-instruction">En la lista de opciones adicionales, busca y selecciona **Agregar a Inicio**.</p>
+          <div class="safari-mockup" style="background: rgba(115, 115, 115, 0.2); padding: 8px; display: flex; flex-direction: column; justify-content: flex-end; height: 154px; box-sizing: border-box;">
+            <!-- Lista de opciones del Share Sheet -->
+            <div style="background: #ffffff; border-radius: 12px; box-shadow: 0 -4px 15px rgba(0,0,0,0.1); padding: 6px; display: flex; flex-direction: column; font-size: 10px; gap: 4px; border: 1px solid rgba(0,0,0,0.05); box-sizing: border-box;">
+              <!-- Agregar marcador a... -->
+              <div style="display: flex; align-items: center; gap: 8px; padding: 6px; border-bottom: 1px solid rgba(0,0,0,0.04); color: #334155; box-sizing: border-box;">
+                <span style="font-size: 12px; opacity: 0.7;">📖</span>
+                <span>Agregar marcador a...</span>
+              </div>
+              <!-- Agregar a Favoritos -->
+              <div style="display: flex; align-items: center; gap: 8px; padding: 6px; border-bottom: 1px solid rgba(0,0,0,0.04); color: #334155; box-sizing: border-box;">
+                <span style="font-size: 12px; opacity: 0.7;">⭐</span>
+                <span>Agregar a Favoritos</span>
+              </div>
+              <!-- Agregar a Inicio (Destacado) -->
+              <div class="safari-sheet-item highlighted" style="padding: 6px; display: flex; align-items: center; justify-content: space-between; background: rgba(0, 122, 255, 0.04); border-radius: 6px; box-sizing: border-box;">
+                <div style="display: flex; align-items: center; gap: 8px; color: #007aff; font-weight: 700;">
+                  <!-- Icono cuadrado de añadir a inicio -->
+                  <span style="width: 16px; height: 16px; border: 1.5px solid #007aff; border-radius: 4px; display: flex; align-items: center; justify-content: center; font-size: 10px; font-weight: bold; background: white; box-sizing: border-box;">+</span>
+                  <span>Agregar a Inicio</span>
+                </div>
+                <span style="font-size: 14px; animation: bounce 2s infinite; display: inline-block;">☝️</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="ios-guide-footer">
+        <button id="iosPrevBtn" class="ios-btn-prev" disabled>Atrás</button>
+        <button id="iosNextBtn" class="ios-btn-next">Siguiente</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Modal de Petición de Oración -->
+  <div id="prayerModal" class="prayer-modal">
+    <div class="prayer-modal-content">
+      <button id="closePrayerModalBtn" class="prayer-modal-close" aria-label="Cerrar">&times;</button>
+      
+      <div class="prayer-modal-header">
+        <h3>🙏 Petición de Oración</h3>
+        <p>Escribe tu necesidad de oración. Estaremos orando por ti con confidencialidad.</p>
+      </div>
+
+      <form id="prayerForm" class="prayer-form">
+        <div class="form-group">
+          <label for="prayerName">Nombre completo</label>
+          <input type="text" id="prayerName" required placeholder="Tu nombre y apellido..." />
+        </div>
+
+        <div class="form-group">
+          <label for="prayerCategory">Motivo de la oración</label>
+          <select id="prayerCategory" required>
+            <option value="" disabled selected>Selecciona una categoría...</option>
+            <option value="Salud">🏥 Salud (Física o emocional)</option>
+            <option value="Familia">👨‍👩‍👧‍👦 Familia (Matrimonio, hijos)</option>
+            <option value="Trabajo">💼 Trabajo y Finanzas (Empleo, provisión)</option>
+            <option value="Espiritual">✨ Fortalecimiento Espiritual (Paz, fe)</option>
+            <option value="Agradecimiento">💖 Acción de Gracias / Testimonio</option>
+            <option value="Otro">❓ Otro motivo</option>
+          </select>
+        </div>
+
+        <div class="form-group">
+          <label for="prayerDetails">Escribe tu petición de oración</label>
+          <textarea id="prayerDetails" rows="4" required placeholder="¿Por qué te gustaría que oremos?..."></textarea>
+        </div>
+
+        <button type="submit" class="btn submit-prayer-btn">
+          <span>💬</span> Enviar por WhatsApp
+        </button>
+      </form>
+    </div>
+  </div>
+
+  <!-- Modal de Redes Sociales y Contacto de la Radio -->
+  <div id="socialModal" class="social-modal">
+    <div class="social-modal-content">
+      <button id="closeSocialModalBtn" class="social-modal-close" aria-label="Cerrar">&times;</button>
+      
+      <div class="social-modal-header">
+        <h3>
+          <svg class="modal-title-icon" viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="display: inline-block; vertical-align: middle; margin-right: 8px;">
+            <circle cx="18" cy="5" r="3"></circle>
+            <circle cx="6" cy="12" r="3"></circle>
+            <circle cx="18" cy="19" r="3"></circle>
+            <line x1="8.59" y1="13.51" x2="15.42" y2="17.49"></line>
+            <line x1="15.41" y1="6.51" x2="8.59" y2="10.49"></line>
+          </svg>
+          <span style="vertical-align: middle;">Redes y Contacto</span>
+        </h3>
+        <p>Conéctate con nuestra señal y redes oficiales.</p>
+      </div>
+
+      <div class="social-modal-grid">
+        <a href="https://www.tiktok.com/@radio.bendicion.online" target="_blank" rel="noopener" class="social-grid-item">
+          <div class="social-grid-icon">
+            <img src="https://upload.wikimedia.org/wikipedia/commons/a/a6/Tiktok_icon.svg" alt="TikTok">
+          </div>
+          <strong>TikTok</strong>
+          <span>@radio.bendicion.online</span>
+        </a>
+
+        <a href="https://www.instagram.com/iglesiatodalagloriaparadios" target="_blank" rel="noopener" class="social-grid-item">
+          <div class="social-grid-icon">
+            <img src="https://upload.wikimedia.org/wikipedia/commons/e/e7/Instagram_logo_2016.svg" alt="Instagram">
+          </div>
+          <strong>Instagram</strong>
+          <span>@iglesiatodalagloriaparadios</span>
+        </a>
+
+        <a href="https://www.facebook.com/iglesiatgpd" target="_blank" rel="noopener" class="social-grid-item">
+          <div class="social-grid-icon">
+            <img src="https://upload.wikimedia.org/wikipedia/commons/b/b8/2021_Facebook_icon.svg" alt="Facebook">
+          </div>
+          <strong>Facebook</strong>
+          <span>Iglesia Tgpd</span>
+        </a>
+
+        <a href="https://www.youtube.com/@RadioBendicion-i9x" target="_blank" rel="noopener" class="social-grid-item">
+          <div class="social-grid-icon">
+            <img src="https://upload.wikimedia.org/wikipedia/commons/0/09/YouTube_full-color_icon_%282017%29.svg" alt="YouTube">
+          </div>
+          <strong>YouTube</strong>
+          <span>@RadioBendicion-i9x</span>
+        </a>
+      </div>
+
+      <div class="social-modal-footer">
+        <button id="prayerBtnModal" class="btn btn-primary" style="width: 100%;">
+          <span>🙏</span> Pedir Oración / WhatsApp
+        </button>
+      </div>
+    </div>
+  </div>
+
   <script src="js/jquery-4.0.0.min.js"></script>
+  <script src="js/devotionals-db.js"></script>
   <script src="js/index.js"></script>
 </body>
 </html>

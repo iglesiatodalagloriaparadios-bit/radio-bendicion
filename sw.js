@@ -1,7 +1,8 @@
-const CACHE_NAME = 'radio-bendicion-v8';
+const CACHE_NAME = 'radio-bendicion-v16';
 const ASSETS_TO_CACHE = [
   '/',
   '/css/styles.css',
+  '/js/devotionals-db.js',
   '/js/index.js',
   '/js/jquery-4.0.0.min.js',
   '/images/logo.png',
@@ -76,6 +77,59 @@ self.addEventListener('fetch', (event) => {
           return caches.match('/');
         }
       });
+    })
+  );
+});
+
+// Escuchar evento push para recibir notificaciones del servidor
+self.addEventListener('push', (event) => {
+  let data = { title: 'Radio Bendición', body: 'Nuevo devocional diario disponible.' };
+  if (event.data) {
+    try {
+      data = event.data.json();
+    } catch (e) {
+      data = { title: 'Radio Bendición', body: event.data.text() };
+    }
+  }
+
+  const options = {
+    body: data.body,
+    icon: '/images/logo-192.png',
+    badge: '/images/logo-192.png',
+    vibrate: [100, 50, 100],
+    data: {
+      url: data.url || '/#devocional'
+    }
+  };
+
+  event.waitUntil(
+    self.registration.showNotification(data.title, options)
+  );
+});
+
+// Escuchar clics en la notificación para abrir/enfocar la app
+self.addEventListener('notificationclick', (event) => {
+  event.notification.close();
+
+  const targetUrl = event.notification.data && event.notification.data.url 
+    ? event.notification.data.url 
+    : '/#devocional';
+
+  event.waitUntil(
+    clients.matchAll({ type: 'window', includeUncontrolled: true }).then((windowClients) => {
+      // Buscar si ya hay una pestaña abierta con la app
+      for (let i = 0; i < windowClients.length; i++) {
+        const client = windowClients[i];
+        if (client.url.includes(self.location.origin) && 'focus' in client) {
+          // Navegar a la URL objetivo (con el hash #devocional)
+          client.navigate(targetUrl);
+          return client.focus();
+        }
+      }
+      // Si no hay pestañas abiertas, abrir una nueva
+      if (clients.openWindow) {
+        return clients.openWindow(targetUrl);
+      }
     })
   );
 });
