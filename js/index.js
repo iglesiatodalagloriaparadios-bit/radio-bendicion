@@ -150,6 +150,14 @@ $(document).ready(function () {
         menuBtn.text(menu.hasClass('open') ? '✕' : '☰');
     });
 
+    // Cerrar menú al hacer clic en el backdrop
+    menu.on('click', function (e) {
+        if ($(e.target).is(menu)) {
+            menu.removeClass('open');
+            menuBtn.text('☰');
+        }
+    });
+
     $('a[href^="#"]').on('click', function (e) {
 
         const target = $($(this).attr('href'));
