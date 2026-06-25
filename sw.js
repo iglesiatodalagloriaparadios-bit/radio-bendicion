@@ -1,4 +1,4 @@
-const CACHE_NAME = 'radio-bendicion-v25';
+const CACHE_NAME = 'radio-bendicion-v27';
 const ASSETS_TO_CACHE = [
   '/',
   '/css/styles.css',
@@ -47,6 +47,9 @@ self.addEventListener('fetch', (event) => {
   // EXCLUIR EL STREAMING DE AUDIO Y LAS PETICIONES DE LA API DE AZURACAST
   // El streaming y la API deben ir siempre a la red directamente
   if (
+    event.request.destination === 'audio' ||
+    event.request.destination === 'video' ||
+    event.request.headers.has('range') ||
     url.hostname.includes('radio.radiobendicion.cl') || 
     url.pathname.endsWith('.mp3') || 
     url.pathname.includes('api/nowplaying_static')

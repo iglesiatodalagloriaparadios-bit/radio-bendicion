@@ -303,7 +303,6 @@ $(document).ready(function () {
         
         // Asignar URL fresca con cache-buster para evitar búfer muerto en caché del navegador
         radioAudio.src = `${STREAM_URL}?t=${Date.now()}`;
-        radioAudio.load();
         
         radioAudio.play().then(() => {
             console.log("Reconexión exitosa.");
@@ -417,7 +416,6 @@ $(document).ready(function () {
         
         // Asignar URL con cache-buster al iniciar para forzar conexión fresca
         radioAudio.src = `${STREAM_URL}?t=${Date.now()}`;
-        radioAudio.load();
         
         radioAudio.play().then(() => {
             playBtn.hide();
@@ -823,13 +821,15 @@ $(document).ready(function () {
     function updateActiveMenuLink(targetHref) {
         $('#menu a').removeClass('active');
         
-        // Si el hash corresponde a la iglesia, activar "Nuestra Iglesia"
-        if (targetHref === '#iglesia' || targetHref === '#devocional' || targetHref === '#horarios') {
-            $('#menu a[href="#iglesia"]').addClass('active');
-        } else if (targetHref === '#inicio' || targetHref === '#radio') {
+        if (targetHref === '#inicio' || targetHref === '#radio') {
             $('#menu a[href="#inicio"]').addClass('active');
         } else {
-            $('#menu a[href="' + targetHref + '"]').addClass('active');
+            const link = $('#menu a[href="' + targetHref + '"]');
+            if (link.length) {
+                link.addClass('active');
+            } else {
+                $('#menu a[href="#iglesia"]').addClass('active');
+            }
         }
     }
 
@@ -853,11 +853,7 @@ $(document).ready(function () {
             }
         } else if (isChurch) {
             $('body').removeClass('view-radio view-admin').addClass('view-church');
-            if (hash === '#contacto') {
-                updateActiveMenuLink('#contacto');
-            } else {
-                updateActiveMenuLink('#iglesia');
-            }
+            updateActiveMenuLink(hash);
         } else if (hash === '#inicio' || hash === '#radio') {
             $('body').removeClass('view-church view-admin').addClass('view-radio');
             updateActiveMenuLink('#inicio');
@@ -1458,8 +1454,8 @@ $(document).ready(function () {
     });
 
     // Cargar datos del administrador si es que ya tiene sesión y recarga la página en la vista del admin
-    const initialHash = window.location.hash || '#inicio';
-    if (initialHash === '#admin-scheduler' || initialHash === '#admin-programacion') {
+    const startHash = window.location.hash || '#inicio';
+    if (startHash === '#admin-scheduler' || startHash === '#admin-programacion') {
         checkHashView();
     }
 
