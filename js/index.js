@@ -1325,6 +1325,101 @@ $(document).ready(function () {
         showToast('📤 Horario exportado a archivo JSON.');
     });
 
+    $('#exportExcelBtn').on('click', function() {
+        if (Object.keys(weeklySchedule).length === 0) {
+            showToast('⚠️ No hay horarios asignados para exportar a Excel.');
+            return;
+        }
+
+        // Generar HTML con estilos para Excel que conserva los colores de la programación radial
+        let html = `
+        <html xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:x="urn:schemas-microsoft-com:office:excel" xmlns="http://www.w3.org/TR/REC-html40">
+        <head>
+            <meta charset="utf-8">
+            <!--[if gte mso 9]>
+            <xml>
+                <x:ExcelWorkbook>
+                    <x:ExcelWorksheets>
+                        <x:ExcelWorksheet>
+                            <x:Name>Programación Radial</x:Name>
+                            <x:WorksheetOptions>
+                                <x:DisplayGridlines/>
+                            </x:WorksheetOptions>
+                        </x:ExcelWorksheet>
+                    </x:ExcelWorksheets>
+                </x:ExcelWorkbook>
+            </xml>
+            <![endif]-->
+            <style>
+                table { border-collapse: collapse; font-family: 'Segoe UI', Arial, sans-serif; }
+                th, td { border: 1.5px solid #cbd5e1; padding: 12px; text-align: center; font-size: 11pt; vertical-align: middle; }
+                th { background-color: #1e293b; color: #ffffff; font-weight: bold; font-size: 12pt; height: 35px; }
+                .time-column { background-color: #0f172a; color: #3b82f6; width: 100px; font-weight: bold; }
+                .time-cell { background-color: #f1f5f9; font-weight: bold; color: #475569; width: 100px; }
+                .empty-cell { background-color: #fafafa; }
+                .program-cell { font-weight: bold; color: #ffffff; }
+                .speaker-text { font-size: 9pt; font-weight: normal; opacity: 0.9; margin-top: 4px; display: block; }
+            </style>
+        </head>
+        <body>
+            <table>
+                <thead>
+                    <tr>
+                        <th class="time-column">Hora</th>
+                        <th style="width: 150px;">Lunes</th>
+                        <th style="width: 150px;">Martes</th>
+                        <th style="width: 150px;">Miércoles</th>
+                        <th style="width: 150px;">Jueves</th>
+                        <th style="width: 150px;">Viernes</th>
+                        <th style="width: 150px;">Sábado</th>
+                        <th style="width: 150px;">Domingo</th>
+                    </tr>
+                </thead>
+                <tbody>
+        `;
+
+        hours.forEach(hour => {
+            html += `<tr><td class="time-cell">${hour}</td>`;
+            days.forEach(day => {
+                const key = `${day}_${hour}`;
+                if (weeklySchedule[key]) {
+                    const prog = weeklySchedule[key];
+                    const name = $('<div>').text(prog.name).html();
+                    const speaker = $('<div>').text(prog.speaker).html();
+                    
+                    html += `<td class="program-cell" style="background-color: ${prog.color}; color: #ffffff;">
+                        <strong>${name}</strong>
+                        <span class="speaker-text">${speaker}</span>
+                    </td>`;
+                } else {
+                    html += `<td class="empty-cell"></td>`;
+                }
+            });
+            html += `</tr>`;
+        });
+
+        html += `
+                </tbody>
+            </table>
+        </body>
+        </html>
+        `;
+
+        const blob = new Blob([html], { type: 'application/vnd.ms-excel;charset=utf-8' });
+        const url = URL.createObjectURL(blob);
+        
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = 'programacion_radio_bendicion.xls';
+        document.body.appendChild(a);
+        a.click();
+        
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+        
+        showToast('📊 Horario exportado a archivo Excel (.xls)');
+    });
+
     $('#importScheduleBtn').on('click', function() {
         $('#importFileInput').click();
     });
