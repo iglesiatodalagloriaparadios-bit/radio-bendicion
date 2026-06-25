@@ -3178,4 +3178,439 @@ body.is-offline .radio-live span {
   animation: none !important;
 }
 
+/* --- ADMIN SCHEDULER SECTION (PANEL SECRETO) --- */
+body.view-admin header,
+body.view-admin footer,
+body.view-admin .clouds,
+body.view-admin main > section:not(#admin-scheduler) {
+  display: none !important;
+}
+
+body.view-admin {
+  background: #0f172a !important; /* Slate 900 */
+  color: #f8fafc !important;
+  overflow-y: auto !important;
+}
+
+#admin-scheduler {
+  min-height: 100vh;
+  padding: 40px 20px;
+  background: radial-gradient(circle at top right, rgba(99, 102, 241, 0.08), transparent 40%),
+              radial-gradient(circle at bottom left, rgba(59, 130, 246, 0.08), transparent 40%),
+              #0f172a;
+  display: flex;
+  flex-direction: column;
+  gap: 30px;
+  max-width: 100%;
+}
+
+/* Glassmorphism Auth Screen */
+.admin-auth-container {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 80vh;
+}
+
+.admin-auth-card {
+  background: rgba(30, 41, 59, 0.7);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  border-radius: 24px;
+  padding: 40px;
+  width: 100%;
+  max-width: 420px;
+  box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.5);
+  text-align: center;
+}
+
+.admin-auth-card h3 {
+  font-family: 'Cinzel', serif;
+  font-size: 28px;
+  margin-bottom: 8px;
+  color: #f8fafc;
+}
+
+.admin-auth-card p {
+  color: #94a3b8;
+  font-size: 14px;
+  margin-bottom: 24px;
+}
+
+.admin-input-group {
+  margin-bottom: 20px;
+}
+
+.admin-input {
+  width: 100%;
+  background: rgba(15, 23, 42, 0.6);
+  border: 1.5px solid rgba(255, 255, 255, 0.1);
+  border-radius: 12px;
+  padding: 14px 16px;
+  color: #ffffff;
+  font-size: 16px;
+  text-align: center;
+  letter-spacing: 4px;
+  font-weight: bold;
+  transition: all 0.3s;
+}
+
+.admin-input:focus {
+  border-color: #3b82f6;
+  box-shadow: 0 0 15px rgba(59, 130, 246, 0.3);
+  outline: none;
+}
+
+/* Workspace Layout */
+.admin-dashboard {
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+  width: 100%;
+  max-width: 1400px;
+  margin: 0 auto;
+}
+
+.admin-header-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 20px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+  padding-bottom: 20px;
+}
+
+.admin-header-row h1 {
+  font-family: 'Cinzel', serif;
+  font-size: 32px;
+  background: linear-gradient(135deg, #6366f1 0%, #3b82f6 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  margin: 0;
+}
+
+.admin-actions {
+  display: flex;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.btn-admin {
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  padding: 10px 18px;
+  border-radius: 12px;
+  color: #f8fafc;
+  cursor: pointer;
+  font-weight: 600;
+  font-size: 14px;
+  transition: all 0.3s cubic-bezier(0.25, 1, 0.5, 1);
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.btn-admin:hover {
+  background: rgba(255, 255, 255, 0.12);
+  transform: translateY(-2px);
+}
+
+.btn-admin.btn-primary-admin {
+  background: linear-gradient(135deg, #3b82f6 0%, #2563eb 100%);
+  border: none;
+  box-shadow: 0 4px 15px rgba(59, 130, 246, 0.25);
+}
+
+.btn-admin.btn-primary-admin:hover {
+  box-shadow: 0 6px 20px rgba(59, 130, 246, 0.4);
+}
+
+.btn-admin.btn-danger-admin {
+  background: rgba(239, 68, 68, 0.15);
+  border: 1px solid rgba(239, 68, 68, 0.3);
+  color: #fca5a5;
+}
+
+.btn-admin.btn-danger-admin:hover {
+  background: rgba(239, 68, 68, 0.3);
+}
+
+/* Two Columns Dashboard Content */
+.admin-grid-layout {
+  display: grid;
+  grid-template-columns: 320px 1fr;
+  gap: 30px;
+  align-items: start;
+}
+
+@media (max-width: 1024px) {
+  .admin-grid-layout {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* Sidebar: available programs & program creator */
+.admin-sidebar {
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+}
+
+.admin-card {
+  background: rgba(30, 41, 59, 0.5);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 20px;
+  padding: 24px;
+  backdrop-filter: blur(8px);
+}
+
+.admin-card h3 {
+  font-size: 18px;
+  font-weight: 700;
+  margin-bottom: 16px;
+  border-left: 3px solid #3b82f6;
+  padding-left: 10px;
+}
+
+.admin-form-group {
+  margin-bottom: 14px;
+}
+
+.admin-form-group label {
+  display: block;
+  font-size: 12px;
+  color: #94a3b8;
+  margin-bottom: 6px;
+  font-weight: 500;
+}
+
+.admin-form-input {
+  width: 100%;
+  background: rgba(15, 23, 42, 0.5);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 8px;
+  padding: 10px 12px;
+  color: #ffffff;
+  font-size: 14px;
+  transition: all 0.3s;
+}
+
+.admin-form-input:focus {
+  border-color: #3b82f6;
+  outline: none;
+}
+
+/* Presets for colors */
+.color-presets {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.color-dot {
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  cursor: pointer;
+  border: 2px solid transparent;
+  transition: transform 0.2s;
+}
+
+.color-dot:hover {
+  transform: scale(1.15);
+}
+
+.color-dot.selected {
+  border-color: #ffffff;
+  box-shadow: 0 0 8px rgba(255, 255, 255, 0.6);
+}
+
+/* Draggable Program Cards list */
+.programs-list {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  max-height: 400px;
+  overflow-y: auto;
+  padding-right: 4px;
+  margin-top: 15px;
+}
+
+.program-card {
+  padding: 12px 16px;
+  border-radius: 12px;
+  color: #ffffff;
+  cursor: grab;
+  font-size: 14px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  box-shadow: 0 4px 10px rgba(0, 0, 0, 0.15);
+  user-select: none;
+  transition: transform 0.2s, box-shadow 0.2s;
+}
+
+.program-card:hover {
+  transform: translateY(-2px) scale(1.02);
+  box-shadow: 0 6px 15px rgba(0, 0, 0, 0.25);
+}
+
+.program-card:active {
+  cursor: grabbing;
+}
+
+.program-card .prog-details {
+  flex-grow: 1;
+}
+
+.program-card .prog-name {
+  font-weight: 700;
+  display: block;
+}
+
+.program-card .prog-speaker {
+  font-size: 11px;
+  opacity: 0.85;
+}
+
+.program-card .delete-btn {
+  background: transparent;
+  border: none;
+  color: rgba(255, 255, 255, 0.6);
+  font-size: 16px;
+  cursor: pointer;
+  padding: 4px;
+  border-radius: 4px;
+  transition: all 0.2s;
+}
+
+.program-card .delete-btn:hover {
+  color: #ef4444;
+  background: rgba(255, 255, 255, 0.1);
+}
+
+/* Central schedule board */
+.scheduler-board-container {
+  overflow-x: auto;
+  background: rgba(30, 41, 59, 0.3);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 20px;
+  padding: 24px;
+  backdrop-filter: blur(8px);
+}
+
+.scheduler-table {
+  width: 100%;
+  border-collapse: collapse;
+  min-width: 800px;
+}
+
+.scheduler-table th,
+.scheduler-table td {
+  border: 1px solid rgba(255, 255, 255, 0.05);
+  padding: 6px;
+  text-align: center;
+}
+
+.scheduler-table th {
+  background: rgba(15, 23, 42, 0.6);
+  color: #94a3b8;
+  font-weight: 700;
+  font-size: 14px;
+  padding: 12px 6px;
+}
+
+.scheduler-table th.time-column {
+  width: 90px;
+  color: #3b82f6;
+}
+
+.scheduler-table td.time-cell {
+  background: rgba(15, 23, 42, 0.4);
+  color: #94a3b8;
+  font-size: 12px;
+  font-weight: bold;
+}
+
+.schedule-slot {
+  height: 60px;
+  border-radius: 8px;
+  background: rgba(15, 23, 42, 0.25);
+  border: 1.5px dashed rgba(255, 255, 255, 0.08);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.2s ease;
+  position: relative;
+}
+
+.schedule-slot.slot-hover {
+  background: rgba(59, 130, 246, 0.08);
+  border-color: #3b82f6;
+  box-shadow: 0 0 10px rgba(59, 130, 246, 0.15) inset;
+}
+
+.schedule-slot .slot-program-card {
+  width: 100%;
+  height: 100%;
+  padding: 6px 8px;
+  border-radius: 6px;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  color: #ffffff;
+  cursor: grab;
+  font-size: 11px;
+  text-align: left;
+  position: relative;
+  overflow: hidden;
+  box-shadow: 0 2px 5px rgba(0, 0, 0, 0.2);
+}
+
+.schedule-slot .slot-program-card .prog-name {
+  font-weight: 700;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  overflow: hidden;
+  display: block;
+}
+
+.schedule-slot .slot-program-card .prog-speaker {
+  font-size: 9px;
+  opacity: 0.8;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  overflow: hidden;
+  display: block;
+}
+
+.schedule-slot .slot-program-card .remove-btn {
+  position: absolute;
+  top: 2px;
+  right: 2px;
+  background: rgba(0, 0, 0, 0.2);
+  border: none;
+  color: #ffffff;
+  font-size: 10px;
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  opacity: 0;
+  transition: opacity 0.2s;
+}
+
+.schedule-slot:hover .remove-btn {
+  opacity: 1;
+}
+
+.schedule-slot .slot-program-card .remove-btn:hover {
+  background: #ef4444;
+}
+
 

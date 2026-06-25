@@ -471,6 +471,99 @@
           </a>
         </div>
       </div>
+    <!-- SECCIÓN SECRETA DE ADMINISTRACIÓN: PLANIFICADOR DE HORARIOS RADIALES -->
+    <section id="admin-scheduler">
+      <!-- 1. Pantalla de Autorización (Ingreso con PIN) -->
+      <div id="adminAuthScreen" class="admin-auth-container">
+        <div class="admin-auth-card">
+          <h3>Acceso Secreto</h3>
+          <p>Introduce el código de administración para gestionar la programación radial.</p>
+          <div class="admin-input-group">
+            <input type="password" id="adminPasscode" class="admin-input" placeholder="••••" maxlength="8">
+          </div>
+          <button id="adminLoginBtn" class="btn btn-primary" style="width:100%;">Ingresar</button>
+        </div>
+      </div>
+
+      <!-- 2. Panel de Control de Horarios (Dashboard) -->
+      <div id="adminDashboard" class="admin-dashboard" style="display:none;">
+        <div class="admin-header-row">
+          <div>
+            <div class="tag" style="margin-bottom: 4px;">Panel de Administración</div>
+            <h1>Planificador Radial</h1>
+          </div>
+          <div class="admin-actions">
+            <button id="saveScheduleBtn" class="btn-admin btn-primary-admin">💾 Guardar Horario</button>
+            <button id="clearScheduleBtn" class="btn-admin btn-danger-admin">🗑️ Limpiar Todo</button>
+            <button id="exportScheduleBtn" class="btn-admin">📤 Exportar JSON</button>
+            <button id="importScheduleBtn" class="btn-admin">📥 Importar JSON</button>
+            <input type="file" id="importFileInput" accept=".json" style="display:none;">
+            <button id="exitAdminBtn" class="btn-admin">🚪 Salir del Panel</button>
+          </div>
+        </div>
+
+        <div class="admin-grid-layout">
+          <!-- Columna Izquierda: Programas Disponibles y Creador -->
+          <div class="admin-sidebar">
+            <!-- Creador de nuevos bloques -->
+            <div class="admin-card">
+              <h3>Crear Programa</h3>
+              <div class="admin-form-group">
+                <label for="newProgName">Nombre del Programa</label>
+                <input type="text" id="newProgName" class="admin-form-input" placeholder="Ej: Hora del Clamor">
+              </div>
+              <div class="admin-form-group">
+                <label for="newProgSpeaker">Locutor / Encargado</label>
+                <input type="text" id="newProgSpeaker" class="admin-form-input" placeholder="Ej: Pastor Juan Pérez">
+              </div>
+              <div class="admin-form-group">
+                <label>Color Temático</label>
+                <div class="color-presets">
+                  <div class="color-dot selected" style="background:#3b82f6;" data-color="#3b82f6"></div>
+                  <div class="color-dot" style="background:#ef4444;" data-color="#ef4444"></div>
+                  <div class="color-dot" style="background:#10b981;" data-color="#10b981"></div>
+                  <div class="color-dot" style="background:#a855f7;" data-color="#a855f7"></div>
+                  <div class="color-dot" style="background:#f59e0b;" data-color="#f59e0b"></div>
+                  <div class="color-dot" style="background:#ec4899;" data-color="#ec4899"></div>
+                  <div class="color-dot" style="background:#6366f1;" data-color="#6366f1"></div>
+                  <div class="color-dot" style="background:#14b8a6;" data-color="#14b8a6"></div>
+                </div>
+              </div>
+              <button id="createProgramBtn" class="btn btn-primary" style="width:100%; padding:10px; margin-top:8px;">＋ Añadir Lista</button>
+            </div>
+
+            <!-- Listado de programas para arrastrar -->
+            <div class="admin-card">
+              <h3>Bloques Disponibles</h3>
+              <p style="font-size:12px; color:#94a3b8; margin-top:-10px; margin-bottom:15px;">Arrastra estos programas al calendario semanal:</p>
+              <div id="programsList" class="programs-list">
+                <!-- Se llenará dinámicamente con JS, precargado con ejemplos -->
+              </div>
+            </div>
+          </div>
+
+          <!-- Columna Derecha: El Tablero del Horario (Calendario Semanal) -->
+          <div class="scheduler-board-container">
+            <table class="scheduler-table">
+              <thead>
+                <tr>
+                  <th class="time-column">Hora</th>
+                  <th>Lunes</th>
+                  <th>Martes</th>
+                  <th>Miércoles</th>
+                  <th>Jueves</th>
+                  <th>Viernes</th>
+                  <th>Sábado</th>
+                  <th>Domingo</th>
+                </tr>
+              </thead>
+              <tbody id="schedulerTableBody">
+                <!-- Se genera dinámicamente con JS (de 08:00 a 22:00) -->
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
     </section>
   </main>
 

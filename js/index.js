@@ -833,19 +833,33 @@ $(document).ready(function () {
         }
     }
 
+    let adminAuthorized = false;
+
     function checkHashView() {
         const hash = window.location.hash || '#inicio';
         const isChurch = ['#iglesia', '#devocional', '#horarios', '#nosotros', '#vision', '#ministerios', '#creemos', '#contacto'].some(section => hash.startsWith(section));
         
-        if (isChurch) {
-            $('body').removeClass('view-radio').addClass('view-church');
+        if (hash === '#admin-scheduler' || hash === '#admin-programacion') {
+            $('body').removeClass('view-radio view-church').addClass('view-admin');
+            
+            // Si el admin no ha ingresado el PIN, mostrar pantalla de PIN
+            if (!adminAuthorized) {
+                $('#adminAuthScreen').show();
+                $('#adminDashboard').hide();
+                setTimeout(() => $('#adminPasscode').focus(), 50);
+            } else {
+                $('#adminAuthScreen').hide();
+                $('#adminDashboard').show();
+            }
+        } else if (isChurch) {
+            $('body').removeClass('view-radio view-admin').addClass('view-church');
             if (hash === '#contacto') {
                 updateActiveMenuLink('#contacto');
             } else {
                 updateActiveMenuLink('#iglesia');
             }
         } else if (hash === '#inicio' || hash === '#radio') {
-            $('body').removeClass('view-church').addClass('view-radio');
+            $('body').removeClass('view-church view-admin').addClass('view-radio');
             updateActiveMenuLink('#inicio');
         }
     }
@@ -999,6 +1013,359 @@ $(document).ready(function () {
     if (!navigator.onLine) {
         $('body').addClass('is-offline');
         updatePlayerUI();
+    }
+
+    // =========================================================================
+    // --- GESTOR DE PLANIFICACIÓN RADIAL (SECRET ADMIN PANEL) ---
+    // =========================================================================
+    const ADMIN_PIN = "777"; // Pin de acceso secreto
+
+    // Horas y días para generar la grilla
+    const hours = ["08:00", "09:00", "10:00", "11:00", "12:00", "13:00", "14:00", "15:00", "16:00", "17:00", "18:00", "19:00", "20:00", "21:00", "22:00"];
+    const days = ["Lunes", "Martes", "Miércoles", "Jueves", "Viernes", "Sábado", "Domingo"];
+
+    // Programas por defecto en la lista de disponibles
+    const DEFAULT_LIST_PROGRAMS = [
+        { id: 'p1', name: 'Música y Reflexión', speaker: 'Pastor Juan', color: '#3b82f6' },
+        { id: 'p2', name: 'Juventud en Sintonía', speaker: 'Hno. Carlos', color: '#ec4899' },
+        { id: 'p3', name: 'Mujeres de Valor', speaker: 'Hna. María', color: '#a855f7' },
+        { id: 'p4', name: 'Palabra de Vida', speaker: 'Pastor Luis', color: '#10b981' },
+        { id: 'p5', name: 'Sinfonía Celestial', speaker: 'Instrumental', color: '#f59e0b' },
+        { id: 'p6', name: 'La Voz de la Profecía', speaker: 'Hno. Andrés', color: '#6366f1' }
+    ];
+
+    let availablePrograms = [];
+    let weeklySchedule = {}; // Estructura: { "Lunes_08:00": { id, name, speaker, color } }
+
+    // Generar la tabla de horarios radiales dinámicamente
+    function buildSchedulerGrid() {
+        const tbody = $('#schedulerTableBody');
+        tbody.empty();
+
+        hours.forEach(hour => {
+            const tr = $('<tr></tr>');
+            tr.append(`<td class="time-cell">${hour}</td>`);
+
+            days.forEach(day => {
+                const key = `${day}_${hour}`;
+                const slot = $(`<div class="schedule-slot" data-day="${day}" data-hour="${hour}"></div>`);
+                
+                // Configurar eventos de Drag and Drop en el slot
+                slot.on('dragover', handleDragOver);
+                slot.on('dragleave', handleDragLeave);
+                slot.on('drop', handleDrop);
+
+                // Si hay un programa guardado en este slot, renderizarlo
+                if (weeklySchedule[key]) {
+                    const prog = weeklySchedule[key];
+                    const card = createSlotProgramCard(prog, day, hour);
+                    slot.append(card);
+                }
+
+                const td = $('<td></td>').append(slot);
+                tr.append(td);
+            });
+
+            tbody.append(tr);
+        });
+    }
+
+    // Inicializar datos del administrador desde localStorage
+    function initAdminData() {
+        // Cargar programas disponibles
+        const savedProgs = localStorage.getItem('radio-bendicion-admin-programs');
+        if (savedProgs) {
+            availablePrograms = JSON.parse(savedProgs);
+        } else {
+            availablePrograms = [...DEFAULT_LIST_PROGRAMS];
+            localStorage.setItem('radio-bendicion-admin-programs', JSON.stringify(availablePrograms));
+        }
+
+        // Cargar horarios del calendario
+        const savedSchedule = localStorage.getItem('radio-bendicion-weekly-schedule');
+        if (savedSchedule) {
+            weeklySchedule = JSON.parse(savedSchedule);
+        } else {
+            weeklySchedule = {};
+        }
+
+        renderAvailablePrograms();
+    }
+
+    // Renderizar programas en la barra lateral
+    function renderAvailablePrograms() {
+        const container = $('#programsList');
+        container.empty();
+
+        availablePrograms.forEach(p => {
+            const card = $(`
+                <div class="program-card" draggable="true" data-id="${p.id}" data-name="${p.name}" data-speaker="${p.speaker}" data-color="${p.color}" style="background: ${p.color}">
+                    <div class="prog-details">
+                        <span class="prog-name">${p.name}</span>
+                        <span class="prog-speaker">${p.speaker}</span>
+                    </div>
+                    <button class="delete-btn" title="Eliminar programa de la lista">×</button>
+                </div>
+            `);
+
+            // Evento dragstart de la tarjeta de la lista
+            card.on('dragstart', function(e) {
+                const dragData = {
+                    type: 'list-card',
+                    id: p.id,
+                    name: p.name,
+                    speaker: p.speaker,
+                    color: p.color
+                };
+                e.originalEvent.dataTransfer.setData('text/plain', JSON.stringify(dragData));
+                e.originalEvent.dataTransfer.effectAllowed = 'copyMove';
+            });
+
+            // Botón de eliminar programa de la barra lateral
+            card.find('.delete-btn').on('click', function(e) {
+                e.stopPropagation();
+                availablePrograms = availablePrograms.filter(prog => prog.id !== p.id);
+                localStorage.setItem('radio-bendicion-admin-programs', JSON.stringify(availablePrograms));
+                renderAvailablePrograms();
+            });
+
+            container.append(card);
+        });
+    }
+
+    // Crear la tarjeta que va colocada dentro del slot del calendario
+    function createSlotProgramCard(prog, day, hour) {
+        const card = $(`
+            <div class="slot-program-card" draggable="true" style="background: ${prog.color}">
+                <span class="prog-name">${prog.name}</span>
+                <span class="prog-speaker">${prog.speaker}</span>
+                <button class="remove-btn" title="Quitar de este horario">×</button>
+            </div>
+        `);
+
+        // Al arrastrar una tarjeta desde un slot a otro
+        card.on('dragstart', function(e) {
+            const dragData = {
+                type: 'slot-card',
+                originDay: day,
+                originHour: hour,
+                id: prog.id,
+                name: prog.name,
+                speaker: prog.speaker,
+                color: prog.color
+            };
+            e.originalEvent.dataTransfer.setData('text/plain', JSON.stringify(dragData));
+            e.originalEvent.dataTransfer.effectAllowed = 'move';
+        });
+
+        // Botón para remover el bloque del slot individual
+        card.find('.remove-btn').on('click', function(e) {
+            e.stopPropagation();
+            const key = `${day}_${hour}`;
+            delete weeklySchedule[key];
+            card.parent().empty(); // Vaciar el slot visualmente
+        });
+
+        return card;
+    }
+
+    // Controladores de Eventos del Drag & Drop
+    function handleDragOver(e) {
+        e.preventDefault();
+        $(this).addClass('slot-hover');
+    }
+
+    // Remover clase de hover
+    function handleDragLeave() {
+        $(this).removeClass('slot-hover');
+    }
+
+    // Procesar drop en el slot
+    function handleDrop(e) {
+        e.preventDefault();
+        $(this).removeClass('slot-hover');
+        
+        const targetDay = $(this).data('day');
+        const targetHour = $(this).data('hour');
+        const targetKey = `${targetDay}_${targetHour}`;
+
+        try {
+            const dataText = e.originalEvent.dataTransfer.getData('text/plain');
+            if (!dataText) return;
+
+            const dragData = JSON.parse(dataText);
+
+            // Si es un traslado de un slot a otro, limpiar el slot original
+            if (dragData.type === 'slot-card') {
+                const originKey = `${dragData.originDay}_${dragData.originHour}`;
+                delete weeklySchedule[originKey];
+                
+                // Limpiar visualmente el slot original
+                $(`.schedule-slot[data-day="${dragData.originDay}"][data-hour="${dragData.originHour}"]`).empty();
+            }
+
+            // Asignar el programa al nuevo slot
+            const newProgramData = {
+                id: dragData.id,
+                name: dragData.name,
+                speaker: dragData.speaker,
+                color: dragData.color
+            };
+
+            weeklySchedule[targetKey] = newProgramData;
+
+            // Renderizar el bloque en el slot destino
+            $(this).empty();
+            const card = createSlotProgramCard(newProgramData, targetDay, targetHour);
+            $(this).append(card);
+
+        } catch (err) {
+            console.error("Error al procesar el drop:", err);
+        }
+    }
+
+    // --- Manejo del PIN y Autorización de Administrador ---
+    $('#adminLoginBtn').on('click', handleAdminLogin);
+    $('#adminPasscode').on('keypress', function(e) {
+        if (e.which === 13) {
+            handleAdminLogin();
+        }
+    });
+
+    function handleAdminLogin() {
+        const pin = $('#adminPasscode').val();
+        if (pin === ADMIN_PIN) {
+            adminAuthorized = true;
+            $('#adminPasscode').val('');
+            $('#adminAuthScreen').hide();
+            $('#adminDashboard').show();
+            initAdminData();
+            buildSchedulerGrid();
+        } else {
+            // Animación de error (sacudir tarjeta de login)
+            const card = $('.admin-auth-card');
+            card.css('position', 'relative');
+            card.animate({ left: '-15px' }, 50)
+                .animate({ left: '15px' }, 50)
+                .animate({ left: '-10px' }, 50)
+                .animate({ left: '10px' }, 50)
+                .animate({ left: '0px' }, 50);
+            
+            showToast('❌ Código incorrecto. Inténtalo de nuevo.');
+        }
+    }
+
+    // --- Creador de Nuevos Programas (Barra Lateral) ---
+    let selectedColor = '#3b82f6';
+    $('.color-presets .color-dot').on('click', function() {
+        $('.color-presets .color-dot').removeClass('selected');
+        $(this).addClass('selected');
+        selectedColor = $(this).data('color');
+    });
+
+    $('#createProgramBtn').on('click', function() {
+        const name = $('#newProgName').val().trim();
+        const speaker = $('#newProgSpeaker').val().trim();
+
+        if (!name) {
+            showToast('⚠️ Introduce el nombre del programa.');
+            return;
+        }
+
+        const newProg = {
+            id: 'p_' + Date.now(),
+            name: name,
+            speaker: speaker || 'Por definir',
+            color: selectedColor
+        };
+
+        availablePrograms.push(newProg);
+        localStorage.setItem('radio-bendicion-admin-programs', JSON.stringify(availablePrograms));
+        renderAvailablePrograms();
+
+        // Limpiar formulario
+        $('#newProgName').val('');
+        $('#newProgSpeaker').val('');
+        showToast('🟢 Programa añadido a la lista.');
+    });
+
+    // --- Botones de Control de la Programación ---
+    $('#saveScheduleBtn').on('click', function() {
+        localStorage.setItem('radio-bendicion-weekly-schedule', JSON.stringify(weeklySchedule));
+        showToast('💾 Horario radial guardado exitosamente.');
+    });
+
+    $('#clearScheduleBtn').on('click', function() {
+        if (confirm('⚠️ ¿Estás seguro de que deseas limpiar por completo la grilla de horarios?')) {
+            weeklySchedule = {};
+            buildSchedulerGrid();
+            showToast('🗑️ Grilla de horarios vaciada.');
+        }
+    });
+
+    $('#exportScheduleBtn').on('click', function() {
+        const exportData = {
+            schedule: weeklySchedule,
+            programs: availablePrograms
+        };
+
+        const jsonString = JSON.stringify(exportData, null, 2);
+        const blob = new Blob([jsonString], { type: 'application/json' });
+        const url = URL.createObjectURL(blob);
+        
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = 'programacion_radio_bendicion.json';
+        document.body.appendChild(a);
+        a.click();
+        
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+        
+        showToast('📤 Horario exportado a archivo JSON.');
+    });
+
+    $('#importScheduleBtn').on('click', function() {
+        $('#importFileInput').click();
+    });
+
+    $('#importFileInput').on('change', function(e) {
+        const file = e.target.files[0];
+        if (!file) return;
+
+        const reader = new FileReader();
+        reader.onload = function(evt) {
+            try {
+                const importedData = JSON.parse(evt.target.result);
+                if (importedData.schedule && importedData.programs) {
+                    weeklySchedule = importedData.schedule;
+                    availablePrograms = importedData.programs;
+
+                    localStorage.setItem('radio-bendicion-weekly-schedule', JSON.stringify(weeklySchedule));
+                    localStorage.setItem('radio-bendicion-admin-programs', JSON.stringify(availablePrograms));
+
+                    renderAvailablePrograms();
+                    buildSchedulerGrid();
+                    showToast('📥 Horario e inventario importados con éxito.');
+                } else {
+                    showToast('❌ El archivo seleccionado no tiene el formato correcto.');
+                }
+            } catch (err) {
+                showToast('❌ Error al leer el archivo JSON.');
+            }
+        };
+        reader.readAsText(file);
+        $(this).val('');
+    });
+
+    $('#exitAdminBtn').on('click', function() {
+        window.location.hash = '#inicio';
+    });
+
+    // Cargar datos del administrador si es que ya tiene sesión y recarga la página en la vista del admin
+    const initialHash = window.location.hash || '#inicio';
+    if (initialHash === '#admin-scheduler' || initialHash === '#admin-programacion') {
+        checkHashView();
     }
 
 });
