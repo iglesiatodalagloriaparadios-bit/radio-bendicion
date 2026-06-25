@@ -1,15 +1,60 @@
 $(document).ready(function () {
 
-    // --- Registro del Service Worker para PWA ---
+    // --- Registro del Service Worker para PWA con Detección de Actualizaciones ---
     if ('serviceWorker' in navigator) {
         window.addEventListener('load', () => {
             navigator.serviceWorker.register('/sw.js')
-                .then(registration => {
-                    console.log('Service Worker registrado con éxito:', registration.scope);
+                .then(reg => {
+                    console.log('Service Worker registrado con éxito:', reg.scope);
+
+                    // Detectar si hay una actualización en cola o en curso
+                    reg.addEventListener('updatefound', () => {
+                        const newWorker = reg.installing;
+                        if (newWorker) {
+                            newWorker.addEventListener('statechange', () => {
+                                // Si el nuevo SW terminó de instalarse y ya está en espera (waiting)
+                                if (newWorker.state === 'installed' && navigator.serviceWorker.controller) {
+                                    showUpdateToast(reg);
+                                }
+                            });
+                        }
+                    });
+
+                    // Si ya hay un SW esperando en segundo plano al cargar la página
+                    if (reg.waiting && navigator.serviceWorker.controller) {
+                        showUpdateToast(reg);
+                    }
                 })
                 .catch(error => {
                     console.log('Registro de Service Worker fallido:', error);
                 });
+        });
+
+        // Recargar la página una sola vez al activarse el nuevo Service Worker
+        let refreshing = false;
+        navigator.serviceWorker.addEventListener('controllerchange', () => {
+            if (!refreshing) {
+                refreshing = true;
+                window.location.reload();
+            }
+        });
+    }
+
+    // Función toast interactiva para actualizaciones
+    function showUpdateToast(reg) {
+        $('.custom-toast').remove();
+        
+        const toast = $('<div class="custom-toast update-toast">✨ Nueva versión disponible. <button id="reloadPwaBtn" class="toast-btn">Actualizar</button></div>');
+        $('body').append(toast);
+        
+        setTimeout(() => toast.addClass('show'), 50);
+
+        $('#reloadPwaBtn').on('click', function() {
+            if (reg.waiting) {
+                reg.waiting.postMessage({ type: 'SKIP_WAITING' });
+            } else {
+                window.location.reload();
+            }
         });
     }
 
@@ -158,24 +203,7 @@ $(document).ready(function () {
         }
     });
 
-    $('a[href^="#"]').on('click', function (e) {
 
-        const target = $($(this).attr('href'));
-
-        if (target.length) {
-
-            e.preventDefault();
-
-            const headerHeight = $('header').outerHeight();
-
-            $('html, body').stop().animate({
-                scrollTop: target.offset().top - headerHeight
-            }, 1000, 'swing');
-
-            menu.removeClass('open');
-            menuBtn.text('☰');
-        }
-    });
 
     $('#year').text(new Date().getFullYear());
 
@@ -186,56 +214,246 @@ $(document).ready(function () {
     const volumeSlider = $('#volumeSlider');
     const nowPlayingText = $('.now-playing');
 
-    // URL de la API de AzuraCast para metadatos "Now Playing"
+    // URL de la señal de streaming y API de AzuraCast
+    const STREAM_URL = 'https://radio.radiobendicion.cl/listen/radio_bendici%C3%B3n/radio.mp3';
     const API_URL = 'https://radio.radiobendicion.cl/api/nowplaying_static/radio_bendici%C3%B3n.json';
 
+    let currentSongText = 'Sintonizando la señal...';
+    let isBuffering = false;
+
+    // --- Control de reconexión y estado deseado ---
+    let isPlayingState = false; // true si el usuario quiere que la radio suene
+    let reconnectTimeout = null;
+    let retryCount = 0;
+    const MAX_RETRIES = 5;
+
+    function resetReconnect() {
+        if (reconnectTimeout) {
+            clearTimeout(reconnectTimeout);
+            reconnectTimeout = null;
+        }
+        retryCount = 0;
+    }
+
+    // --- Soporte de Media Session API ---
+    function updateMediaSession() {
+        if ('mediaSession' in navigator) {
+            const cleanArtistText = currentSongText === 'Sintonizando la señal...' ? 'Señal en Vivo' : currentSongText;
+            navigator.mediaSession.metadata = new MediaMetadata({
+                title: 'Radio Bendición',
+                artist: cleanArtistText,
+                album: 'Iglesia Toda la Gloria para Dios',
+                artwork: [
+                    { src: 'images/logo-192.png', sizes: '192x192', type: 'image/png' },
+                    { src: 'images/logo-512.png', sizes: '512x512', type: 'image/png' }
+                ]
+            });
+        }
+    }
+
+    function updateMediaPlaybackState(state) {
+        if ('mediaSession' in navigator) {
+            navigator.mediaSession.playbackState = state; // 'playing', 'paused', or 'none'
+        }
+    }
+
+    // Configurar controladores de Media Session una sola vez
+    if ('mediaSession' in navigator) {
+        navigator.mediaSession.setActionHandler('play', function() {
+            if (playBtn.is(':visible')) {
+                playBtn.click();
+            }
+        });
+        navigator.mediaSession.setActionHandler('pause', function() {
+            if (pauseBtn.is(':visible')) {
+                pauseBtn.click();
+            }
+        });
+        navigator.mediaSession.setActionHandler('stop', function() {
+            if (pauseBtn.is(':visible')) {
+                pauseBtn.click();
+            }
+        });
+    }
+
+    function attemptReconnect() {
+        // Si el usuario pausó manualmente o no hay conexión de red, no hacemos nada
+        if (!isPlayingState || !navigator.onLine) {
+            resetReconnect();
+            return;
+        }
+
+        if (retryCount >= MAX_RETRIES) {
+            console.warn("Límite de reconexiones alcanzado");
+            showToast('⚠️ Se interrumpió la señal de la radio. Presiona Play para intentar conectar nuevamente.');
+            isPlayingState = false;
+            isBuffering = false;
+            resetReconnect();
+            pauseBtn.hide();
+            playBtn.show();
+            updatePlayerUI();
+            updateMediaPlaybackState('paused');
+            return;
+        }
+
+        retryCount++;
+        console.log(`Reconectando... Intento ${retryCount}/${MAX_RETRIES}`);
+        isBuffering = true;
+        updatePlayerUI();
+        
+        // Asignar URL fresca con cache-buster para evitar búfer muerto en caché del navegador
+        radioAudio.src = `${STREAM_URL}?t=${Date.now()}`;
+        radioAudio.load();
+        
+        radioAudio.play().then(() => {
+            console.log("Reconexión exitosa.");
+            isBuffering = false;
+            resetReconnect();
+            updatePlayerUI();
+            updateMediaPlaybackState('playing');
+        }).catch(err => {
+            console.error("Fallo al reconectar:", err);
+            // Programar el siguiente intento
+            reconnectTimeout = setTimeout(attemptReconnect, 4000);
+        });
+    }
+
     function updateNowPlaying() {
-        $.getJSON(API_URL, function(data) {
+        // Intentar actualizar metadatos con cache-buster para evitar caché
+        const urlWithCacheBuster = `${API_URL}?t=${Date.now()}`;
+        
+        $.getJSON(urlWithCacheBuster, function(data) {
             if (data && data.now_playing && data.now_playing.song) {
                 const song = data.now_playing.song;
                 const text = song.artist ? `${song.artist} - ${song.title}` : song.title;
-                nowPlayingText.text(`Estás escuchando: ${text}`);
-                
-                // Si el audio está pausado, mantenemos el texto de metadatos
-                // pero si se acaba de cargar, ayuda a saber qué suena
+                currentSongText = text;
+                updatePlayerUI();
+                updateMediaSession();
             }
         }).fail(function() {
             console.warn('No se pudieron cargar los metadatos de la radio.');
         });
     }
 
-    // Actualización inicial y cada 20 segundos
+    function updatePlayerUI() {
+        if (!navigator.onLine) {
+            nowPlayingText.text('Modo sin conexión • Streaming no disponible');
+        } else if (radioAudio.error) {
+            nowPlayingText.text('Error al conectar con la señal');
+        } else if (isBuffering) {
+            nowPlayingText.text('Sintonizando la señal (cargando)...');
+        } else if (radioAudio.paused) {
+            nowPlayingText.text(`Streaming pausado • En vivo: ${currentSongText}`);
+        } else {
+            nowPlayingText.text(`Estás escuchando: ${currentSongText}`);
+        }
+    }
+
+    // Actualización inicial y cada 8 segundos para mayor velocidad de refresco
     updateNowPlaying();
-    setInterval(updateNowPlaying, 20000);
+    const metadataInterval = setInterval(updateNowPlaying, 8000);
+
+    // Eventos del elemento de audio para actualizar la interfaz inmediatamente
+    $(radioAudio).on('play', function() {
+        isPlayingState = true;
+        isBuffering = true;
+        updatePlayerUI();
+        updateNowPlaying(); // Forzar actualización de metadatos al reproducir
+        updateMediaPlaybackState('playing');
+        updateMediaSession();
+    });
+
+    $(radioAudio).on('playing', function() {
+        isBuffering = false;
+        resetReconnect();
+        updatePlayerUI();
+        updateMediaPlaybackState('playing');
+    });
+
+    $(radioAudio).on('waiting stalled', function(e) {
+        isBuffering = true;
+        updatePlayerUI();
+        
+        // Si el usuario quería reproducir pero el audio se estanca
+        if (isPlayingState && !reconnectTimeout) {
+            console.log(`Señal en espera (${e.type}). Agendando reconexión en 5 segundos...`);
+            reconnectTimeout = setTimeout(() => {
+                reconnectTimeout = null;
+                attemptReconnect();
+            }, 5000);
+        }
+    });
+
+    $(radioAudio).on('pause', function() {
+        isBuffering = false;
+        updatePlayerUI();
+        updateMediaPlaybackState('paused');
+    });
+
+    $(radioAudio).on('error', function(e) {
+        console.error("Error en elemento de audio:", e);
+        isBuffering = false;
+        
+        if (isPlayingState) {
+            console.log("Error detectado en reproducción activa. Intentando reconectar inmediatamente...");
+            attemptReconnect();
+        } else {
+            nowPlayingText.text('Error al conectar con la señal');
+            pauseBtn.hide();
+            playBtn.show();
+            updateMediaPlaybackState('none');
+        }
+    });
 
     playBtn.on('click', function() {
+        if (!navigator.onLine) {
+            showToast('⚠️ No tienes conexión a internet para reproducir la radio.');
+            return;
+        }
+        isPlayingState = true;
+        isBuffering = true;
+        resetReconnect();
+        nowPlayingText.text('Conectando con la señal...');
+        
+        // Asignar URL con cache-buster al iniciar para forzar conexión fresca
+        radioAudio.src = `${STREAM_URL}?t=${Date.now()}`;
+        radioAudio.load();
+        
         radioAudio.play().then(() => {
             playBtn.hide();
             pauseBtn.show();
+            updateMediaPlaybackState('playing');
+            updateMediaSession();
         }).catch(err => {
             console.error("Error al reproducir:", err);
-            nowPlayingText.text('Error al reproducir la señal');
+            isBuffering = false;
+            isPlayingState = false;
+            updatePlayerUI();
+            updateMediaPlaybackState('none');
         });
     });
 
     pauseBtn.on('click', function() {
+        isPlayingState = false;
+        resetReconnect();
         radioAudio.pause();
         pauseBtn.hide();
         playBtn.show();
-        nowPlayingText.text('Streaming pausado');
-        // Opcional: recargar el stream al pausar para evitar delay acumulado
+        // Recargar el stream al pausar para evitar delay/desfase acumulado
         radioAudio.load(); 
+        updateMediaPlaybackState('paused');
     });
 
     volumeSlider.on('input', function() {
         radioAudio.volume = $(this).val();
     });
 
-    // Manejo de errores de carga
-    $(radioAudio).on('error', function() {
-        nowPlayingText.text('Error al conectar con la señal');
-        pauseBtn.hide();
-        playBtn.show();
+    // Reanudar la radio si la pestaña estuvo suspendida en segundo plano y el audio se detuvo
+    $(document).on('visibilitychange', function() {
+        if (document.visibilityState === 'visible' && isPlayingState && radioAudio.paused) {
+            console.log("Pestaña visible nuevamente y el audio está pausado. Intentando reconectar...");
+            attemptReconnect();
+        }
     });
 
     // --- Detección de Transmisión en Vivo en YouTube ---
@@ -617,8 +835,9 @@ $(document).ready(function () {
 
     function checkHashView() {
         const hash = window.location.hash || '#inicio';
+        const isChurch = ['#iglesia', '#devocional', '#horarios', '#nosotros', '#vision', '#ministerios', '#creemos', '#contacto'].some(section => hash.startsWith(section));
         
-        if (hash === '#iglesia' || hash === '#devocional' || hash === '#horarios' || hash === '#nosotros' || hash === '#vision' || hash === '#ministerios' || hash === '#creemos' || hash === '#contacto') {
+        if (isChurch) {
             $('body').removeClass('view-radio').addClass('view-church');
             if (hash === '#contacto') {
                 updateActiveMenuLink('#contacto');
@@ -637,39 +856,56 @@ $(document).ready(function () {
     function safeScrollTo(targetHref) {
         const targetElement = $(targetHref);
         if (targetElement.length) {
-            // Esperar 250ms para dar tiempo a que el reflow del DOM se estabilice
-            // tras cambiar las clases de las vistas, asegurando un scroll preciso.
+            // Breve espera de 30ms para permitir reflow del DOM tras cambio de clase.
+            // Esto es imperceptible y asegura cálculos de offset exactos.
             setTimeout(() => {
-                targetElement[0].scrollIntoView({ behavior: 'smooth', block: 'start' });
-            }, 250);
+                const headerHeight = $('header').outerHeight() || 80;
+                const elementPosition = targetElement.offset().top;
+                const offsetPosition = elementPosition - headerHeight;
+
+                window.scrollTo({
+                    top: offsetPosition,
+                    behavior: 'smooth'
+                });
+            }, 30);
         }
     }
 
-    // Evento click del menú
-    menuLinks.on('click', function(e) {
-        const targetHref = $(this).attr('href');
+    function navigateToHash(targetHref) {
+        if (!targetHref || !targetHref.startsWith('#')) return;
 
-        if (targetHref && targetHref.startsWith('#')) {
+        // 1. Cambiar la vista inmediatamente
+        const isChurch = ['#iglesia', '#devocional', '#horarios', '#nosotros', '#vision', '#ministerios', '#creemos', '#contacto'].some(section => targetHref.startsWith(section));
+        if (isChurch) {
+            $('body').removeClass('view-radio').addClass('view-church');
+        } else if (targetHref === '#inicio' || targetHref === '#radio') {
+            $('body').removeClass('view-church').addClass('view-radio');
+        }
+
+        // 2. Actualizar el link activo
+        updateActiveMenuLink(targetHref);
+
+        // 3. Cerrar el menú móvil si está abierto
+        menu.removeClass('open');
+        menuBtn.text('☰');
+
+        // 4. Realizar el scroll preciso
+        if (targetHref === '#inicio' || targetHref === '#iglesia' || targetHref === '#radio') {
+            window.scrollTo({ top: 0, behavior: 'smooth' });
+            history.pushState(null, null, targetHref);
+        } else {
+            safeScrollTo(targetHref);
+            history.pushState(null, null, targetHref);
+        }
+    }
+
+    // Evento click unificado para todos los enlaces hash (menú y cuerpo de la página)
+    $(document).on('click', 'a[href^="#"]', function(e) {
+        const targetHref = $(this).attr('href');
+        // Excluir el enlace de YouTube u otros enlaces con hash vacío/genérico (#)
+        if (targetHref && targetHref.length > 1) {
             e.preventDefault();
-            
-            // 1. Cambiar la vista inmediatamente antes del scroll
-            if (targetHref === '#iglesia' || targetHref === '#devocional' || targetHref === '#horarios' || targetHref === '#contacto') {
-                $('body').removeClass('view-radio').addClass('view-church');
-            } else if (targetHref === '#inicio' || targetHref === '#radio') {
-                $('body').removeClass('view-church').addClass('view-radio');
-            }
-            
-            // 2. Actualizar el link activo
-            updateActiveMenuLink(targetHref);
-            
-            // 3. Realizar el scroll suave manual
-            if (targetHref === '#inicio' || targetHref === '#iglesia' || targetHref === '#radio') {
-                window.scrollTo({ top: 0, behavior: 'smooth' });
-                history.pushState(null, null, targetHref);
-            } else {
-                safeScrollTo(targetHref);
-                history.pushState(null, null, targetHref);
-            }
+            navigateToHash(targetHref);
         }
     });
 
@@ -721,5 +957,48 @@ $(document).ready(function () {
             openPrayerModal();
         }, 300);
     });
+
+    // --- Detección de Estado de Conexión (Online/Offline) ---
+    function updateConnectionStatus() {
+        if (navigator.onLine) {
+            if ($('body').hasClass('is-offline')) {
+                $('body').removeClass('is-offline');
+                showToast('🟢 ¡Conexión restablecida! Reestableciendo señal...');
+                updateNowPlaying();
+                
+                // Si el usuario estaba escuchando antes de perder la conexión, intentar reconectar automáticamente
+                if (isPlayingState) {
+                    attemptReconnect();
+                } else {
+                    updatePlayerUI();
+                }
+            }
+        } else {
+            $('body').addClass('is-offline');
+            showToast('⚠️ Sin conexión a internet. Modo sin conexión activo.');
+            
+            // Si hay un temporizador de reconexión activo, cancelarlo temporalmente
+            if (reconnectTimeout) {
+                clearTimeout(reconnectTimeout);
+                reconnectTimeout = null;
+            }
+            
+            // Pausar la reproducción físicamente en el elemento de audio
+            radioAudio.pause();
+            isBuffering = false;
+            updatePlayerUI();
+            updateMediaPlaybackState('paused');
+        }
+    }
+
+    // Escuchar cambios de red del navegador
+    window.addEventListener('online', updateConnectionStatus);
+    window.addEventListener('offline', updateConnectionStatus);
+
+    // Verificación inicial al cargar la página
+    if (!navigator.onLine) {
+        $('body').addClass('is-offline');
+        updatePlayerUI();
+    }
 
 });

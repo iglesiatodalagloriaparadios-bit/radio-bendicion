@@ -1,4 +1,4 @@
-const CACHE_NAME = 'radio-bendicion-v17';
+const CACHE_NAME = 'radio-bendicion-v25';
 const ASSETS_TO_CACHE = [
   '/',
   '/css/styles.css',
@@ -6,6 +6,11 @@ const ASSETS_TO_CACHE = [
   '/js/index.js',
   '/js/jquery-4.0.0.min.js',
   '/images/logo.png',
+  '/images/logo-192.png',
+  '/images/logo-512.png',
+  '/images/logo-maskable-192.png',
+  '/images/logo-maskable-512.png',
+  '/images/apple-touch-icon.png',
   '/manifest.json'
 ];
 
@@ -132,4 +137,11 @@ self.addEventListener('notificationclick', (event) => {
       }
     })
   );
+});
+
+// Escuchar mensajes del cliente para forzar la activación del nuevo service worker
+self.addEventListener('message', (event) => {
+  if (event.data && event.data.type === 'SKIP_WAITING') {
+    self.skipWaiting();
+  }
 });
