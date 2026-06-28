@@ -227,6 +227,41 @@ $(document).ready(function () {
     let retryCount = 0;
     const MAX_RETRIES = 5;
 
+    // --- Wake Lock y auto-resume para segundo plano ---
+    let wakeLock = null;
+    let autoResumeCount = 0;
+    let lastAutoResumeTime = 0;
+
+    async function requestWakeLock() {
+        if (!('wakeLock' in navigator)) {
+            console.log('Screen Wake Lock no es soportado por este navegador.');
+            return;
+        }
+        if (isPlayingState && wakeLock === null) {
+            try {
+                wakeLock = await navigator.wakeLock.request('screen');
+                console.log('Screen Wake Lock activado correctamente.');
+                wakeLock.addEventListener('release', () => {
+                    console.log('Screen Wake Lock fue liberado.');
+                    wakeLock = null;
+                });
+            } catch (err) {
+                console.warn(`No se pudo obtener el Screen Wake Lock: ${err.message}`);
+            }
+        }
+    }
+
+    function releaseWakeLock() {
+        if (wakeLock !== null) {
+            wakeLock.release().then(() => {
+                wakeLock = null;
+                console.log('Screen Wake Lock liberado manualmente.');
+            }).catch(err => {
+                console.warn('Error al liberar el Screen Wake Lock:', err);
+            });
+        }
+    }
+
     function resetReconnect() {
         if (reconnectTimeout) {
             clearTimeout(reconnectTimeout);
@@ -244,8 +279,8 @@ $(document).ready(function () {
                 artist: cleanArtistText,
                 album: 'Iglesia Toda la Gloria para Dios',
                 artwork: [
-                    { src: 'images/logo-192.png', sizes: '192x192', type: 'image/png' },
-                    { src: 'images/logo-512.png', sizes: '512x512', type: 'image/png' }
+                    { src: window.location.origin + '/images/logo-192.png', sizes: '192x192', type: 'image/png' },
+                    { src: window.location.origin + '/images/logo-512.png', sizes: '512x512', type: 'image/png' }
                 ]
             });
         }
@@ -274,6 +309,18 @@ $(document).ready(function () {
                 pauseBtn.click();
             }
         });
+        navigator.mediaSession.setActionHandler('previoustrack', function() {
+            console.log("Media Session: previoustrack pulsado.");
+            if (isPlayingState) {
+                attemptReconnect();
+            }
+        });
+        navigator.mediaSession.setActionHandler('nexttrack', function() {
+            console.log("Media Session: nexttrack pulsado.");
+            if (isPlayingState) {
+                attemptReconnect();
+            }
+        });
     }
 
     function attemptReconnect() {
@@ -289,10 +336,12 @@ $(document).ready(function () {
             isPlayingState = false;
             isBuffering = false;
             resetReconnect();
-            pauseBtn.hide();
-            playBtn.show();
+            // Asegurar descarga limpia ante desconexión permanente
+            radioAudio.removeAttribute('src');
+            radioAudio.load();
             updatePlayerUI();
             updateMediaPlaybackState('paused');
+            releaseWakeLock();
             return;
         }
 
@@ -310,10 +359,28 @@ $(document).ready(function () {
             resetReconnect();
             updatePlayerUI();
             updateMediaPlaybackState('playing');
+            requestWakeLock(); // Asegurar que el wake lock esté activo al reconectar exitosamente
         }).catch(err => {
             console.error("Fallo al reconectar:", err);
-            // Programar el siguiente intento
-            reconnectTimeout = setTimeout(attemptReconnect, 4000);
+            // Si el error es debido a restricciones del navegador para reproducir sin interacción
+            if (err.name === 'NotAllowedError') {
+                console.warn("Reproducción automática bloqueada por el navegador. Deteniendo reconexión automática.");
+                isPlayingState = false;
+                isBuffering = false;
+                resetReconnect();
+                radioAudio.removeAttribute('src');
+                radioAudio.load();
+                updatePlayerUI();
+                showToast('⚠️ Reproducción suspendida por el navegador. Presiona Play para escuchar.');
+                releaseWakeLock();
+            } else {
+                // Programar el siguiente intento para problemas de red
+                // Si la pantalla está bloqueada o en background (hidden), reintentamos más rápido (2s) 
+                // antes de que el hilo JS sea completamente congelado por el OS.
+                const delay = document.visibilityState === 'hidden' ? 2000 : 4000;
+                console.log(`Fallo de red. Programando reconexión en ${delay}ms...`);
+                reconnectTimeout = setTimeout(attemptReconnect, delay);
+            }
         });
     }
 
@@ -348,25 +415,53 @@ $(document).ready(function () {
         }
     }
 
-    // Actualización inicial y cada 8 segundos para mayor velocidad de refresco
+    // --- Control de Polling de Metadatos ---
+    let metadataInterval = null;
+
+    function startMetadataPolling() {
+        if (!metadataInterval) {
+            updateNowPlaying();
+            metadataInterval = setInterval(updateNowPlaying, 8000);
+        }
+    }
+
+    function stopMetadataPolling() {
+        if (metadataInterval) {
+            clearInterval(metadataInterval);
+            metadataInterval = null;
+        }
+    }
+
+    // Cargar metadatos iniciales una vez al abrir la página
     updateNowPlaying();
-    const metadataInterval = setInterval(updateNowPlaying, 8000);
 
     // Eventos del elemento de audio para actualizar la interfaz inmediatamente
     $(radioAudio).on('play', function() {
         isPlayingState = true;
         isBuffering = true;
+        
+        // Sincronizar UI de botones
+        playBtn.hide();
+        pauseBtn.show();
+        
         updatePlayerUI();
-        updateNowPlaying(); // Forzar actualización de metadatos al reproducir
+        startMetadataPolling(); // Polling activo solo al reproducir
         updateMediaPlaybackState('playing');
         updateMediaSession();
+        requestWakeLock(); // Activar el wake lock cuando comience a sonar
     });
 
     $(radioAudio).on('playing', function() {
         isBuffering = false;
         resetReconnect();
+        
+        // Sincronizar UI de botones
+        playBtn.hide();
+        pauseBtn.show();
+        
         updatePlayerUI();
         updateMediaPlaybackState('playing');
+        requestWakeLock(); // Asegurar wake lock activo
     });
 
     $(radioAudio).on('waiting stalled', function(e) {
@@ -375,32 +470,70 @@ $(document).ready(function () {
         
         // Si el usuario quería reproducir pero el audio se estanca
         if (isPlayingState && !reconnectTimeout) {
-            console.log(`Señal en espera (${e.type}). Agendando reconexión en 5 segundos...`);
+            // Si la pantalla está bloqueada (hidden), reintentamos en 500ms antes de que el OS congele el hilo JS.
+            // Si está visible, damos un margen de 1500ms para permitir buffering natural.
+            const delay = document.visibilityState === 'hidden' ? 500 : 1500;
+            console.log(`Señal en espera o estancada (${e.type}). Agendando reconexión en ${delay}ms...`);
             reconnectTimeout = setTimeout(() => {
                 reconnectTimeout = null;
                 attemptReconnect();
-            }, 5000);
+            }, delay);
         }
     });
 
     $(radioAudio).on('pause', function() {
         isBuffering = false;
+        
+        // Sincronizar UI de botones
+        pauseBtn.hide();
+        playBtn.show();
+        
         updatePlayerUI();
+        stopMetadataPolling(); // Detener polling en pausa
         updateMediaPlaybackState('paused');
+
+        if (!isPlayingState) {
+            // Si el usuario pausó explícitamente, liberamos el wake lock
+            releaseWakeLock();
+        } else if (navigator.onLine && !$('body').hasClass('is-offline')) {
+            // El audio fue pausado por el OS/navegador inesperadamente en segundo plano
+            console.warn("Audio pausado inesperadamente en segundo plano. Intentando recuperar reproducción...");
+            const now = Date.now();
+            if (now - lastAutoResumeTime > 10000) {
+                autoResumeCount = 0; // Reiniciar contador tras 10 segundos
+            }
+            if (autoResumeCount < 3) {
+                autoResumeCount++;
+                lastAutoResumeTime = now;
+                console.log(`Intentando reanudar audio automáticamente (intento ${autoResumeCount}/3)...`);
+                setTimeout(() => {
+                    if (isPlayingState && radioAudio.paused) {
+                        radioAudio.play().catch(err => {
+                            console.error("Fallo al reanudar automáticamente:", err);
+                        });
+                    }
+                }, 1000);
+            }
+        }
     });
 
     $(radioAudio).on('error', function(e) {
         console.error("Error en elemento de audio:", e);
         isBuffering = false;
         
+        // Sincronizar UI de botones
+        pauseBtn.hide();
+        playBtn.show();
+        
+        stopMetadataPolling(); // Detener polling ante error
+        
         if (isPlayingState) {
             console.log("Error detectado en reproducción activa. Intentando reconectar inmediatamente...");
             attemptReconnect();
         } else {
             nowPlayingText.text('Error al conectar con la señal');
-            pauseBtn.hide();
-            playBtn.show();
             updateMediaPlaybackState('none');
+            releaseWakeLock();
         }
     });
 
@@ -418,14 +551,14 @@ $(document).ready(function () {
         radioAudio.src = `${STREAM_URL}?t=${Date.now()}`;
         
         radioAudio.play().then(() => {
-            playBtn.hide();
-            pauseBtn.show();
-            updateMediaPlaybackState('playing');
+            // La visibilidad de botones se sincroniza por los eventos del elemento 'audio'
             updateMediaSession();
         }).catch(err => {
             console.error("Error al reproducir:", err);
             isBuffering = false;
             isPlayingState = false;
+            radioAudio.removeAttribute('src');
+            radioAudio.load();
             updatePlayerUI();
             updateMediaPlaybackState('none');
         });
@@ -435,11 +568,10 @@ $(document).ready(function () {
         isPlayingState = false;
         resetReconnect();
         radioAudio.pause();
-        pauseBtn.hide();
-        playBtn.show();
-        // Recargar el stream al pausar para evitar delay/desfase acumulado
-        radioAudio.load(); 
-        updateMediaPlaybackState('paused');
+        // Liberar conexión de red y detener descarga de datos móviles
+        radioAudio.removeAttribute('src');
+        radioAudio.load();
+        // La visibilidad de botones se sincroniza por el evento 'pause' del elemento 'audio'
     });
 
     volumeSlider.on('input', function() {
@@ -448,9 +580,17 @@ $(document).ready(function () {
 
     // Reanudar la radio si la pestaña estuvo suspendida en segundo plano y el audio se detuvo
     $(document).on('visibilitychange', function() {
-        if (document.visibilityState === 'visible' && isPlayingState && radioAudio.paused) {
-            console.log("Pestaña visible nuevamente y el audio está pausado. Intentando reconectar...");
-            attemptReconnect();
+        if (document.visibilityState === 'visible') {
+            if (isPlayingState) {
+                requestWakeLock(); // Volver a solicitar wake lock al regresar al primer plano
+                if (radioAudio.paused) {
+                    console.log("Pestaña visible nuevamente y el audio está pausado. Intentando reconectar...");
+                    attemptReconnect();
+                }
+            }
+        } else {
+            // El OS libera el wake lock cuando el documento se oculta, pero liberamos de manera limpia
+            releaseWakeLock();
         }
     });
 
