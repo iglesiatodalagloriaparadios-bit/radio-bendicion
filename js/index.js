@@ -9,22 +9,25 @@ $(document).ready(function () {
                 .then(reg => {
                     console.log('Service Worker registrado con éxito:', reg.scope);
 
+                    // Forzar una comprobación de actualización de inmediato al abrir la página
+                    reg.update();
+
                     // Detectar si hay una actualización en cola o en curso
                     reg.addEventListener('updatefound', () => {
                         const newWorker = reg.installing;
                         if (newWorker) {
                             newWorker.addEventListener('statechange', () => {
                                 // Si el nuevo SW terminó de instalarse y ya está en espera (waiting)
-                                if (newWorker.state === 'installed' && navigator.serviceWorker.controller) {
-                                    showUpdateToast(reg);
+                                if (newWorker.state === 'installed') {
+                                    handleUpdate(reg, newWorker);
                                 }
                             });
                         }
                     });
 
                     // Si ya hay un SW esperando en segundo plano al cargar la página
-                    if (reg.waiting && navigator.serviceWorker.controller) {
-                        showUpdateToast(reg);
+                    if (reg.waiting) {
+                        handleUpdate(reg, reg.waiting);
                     }
                 })
                 .catch(error => {
@@ -48,6 +51,24 @@ $(document).ready(function () {
                 window.location.reload();
             }
         });
+    }
+
+    // Función para manejar la actualización de manera inteligente
+    function handleUpdate(reg, worker) {
+        if (!navigator.serviceWorker.controller) {
+            // Si es la primera vez que se registra el SW (no hay controlador previo), no hacemos nada
+            return;
+        }
+
+        if (isPlayingState) {
+            // Si está reproduciendo, mostramos el toast interactivo para no interrumpir abruptamente la transmisión
+            showUpdateToast(reg);
+        } else {
+            // Si no está reproduciendo (por ejemplo, acaba de entrar a la página), actualizamos de inmediato
+            console.log('Actualización detectada. Auto-actualizando...');
+            userClickedUpdate = true;
+            worker.postMessage({ type: 'SKIP_WAITING' });
+        }
     }
 
     // Función toast interactiva para actualizaciones
@@ -587,8 +608,20 @@ $(document).ready(function () {
         // La visibilidad de botones se sincroniza por el evento 'pause' del elemento 'audio'
     });
 
+    // Cargar volumen guardado o establecer por defecto (0.8)
+    const savedVolume = localStorage.getItem('radio-volume');
+    if (savedVolume !== null) {
+        radioAudio.volume = parseFloat(savedVolume);
+        volumeSlider.val(savedVolume);
+    } else {
+        radioAudio.volume = 0.8;
+        volumeSlider.val(0.8);
+    }
+
     volumeSlider.on('input', function() {
-        radioAudio.volume = $(this).val();
+        const val = $(this).val();
+        radioAudio.volume = val;
+        localStorage.setItem('radio-volume', val);
     });
 
     // Reanudar la radio si la pestaña estuvo suspendida en segundo plano y el audio se detuvo
@@ -1610,6 +1643,25 @@ $(document).ready(function () {
     const startHash = window.location.hash || '#inicio';
     if (startHash === '#admin-scheduler' || startHash === '#admin-programacion') {
         checkHashView();
+    }
+
+    // --- Manejo de Atajos (Shortcuts) / Parámetros de URL ---
+    const urlParams = new URLSearchParams(window.location.search);
+    
+    // 1. Atajo para reproducir automáticamente
+    if (urlParams.get('play') === 'true') {
+        setTimeout(() => {
+            console.log('Parámetro play=true detectado. Sintonizando la señal...');
+            playBtn.click();
+        }, 500);
+    }
+
+    // 2. Atajo para abrir formulario de petición de oración
+    if (urlParams.get('action') === 'pray') {
+        setTimeout(() => {
+            console.log('Parámetro action=pray detectado. Mostrando modal de oración...');
+            openPrayerModal();
+        }, 600);
     }
 
 });

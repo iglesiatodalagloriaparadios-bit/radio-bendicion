@@ -30,5 +30,28 @@
       "type": "image/png",
       "purpose": "maskable"
     }
+  ],
+  "shortcuts": [
+    {
+      "name": "Escuchar en Vivo",
+      "short_name": "En Vivo",
+      "description": "Sintoniza la señal en vivo de Radio Bendición",
+      "url": "/?play=true",
+      "icons": [{ "src": "images/logo-192.png", "sizes": "192x192" }]
+    },
+    {
+      "name": "Devocional Diario",
+      "short_name": "Devocional",
+      "description": "Lee el devocional del día",
+      "url": "/#devocional",
+      "icons": [{ "src": "images/logo-192.png", "sizes": "192x192" }]
+    },
+    {
+      "name": "Pedir Oración",
+      "short_name": "Pedir Oración",
+      "description": "Envía una petición de oración",
+      "url": "/?action=pray",
+      "icons": [{ "src": "images/logo-192.png", "sizes": "192x192" }]
+    }
   ]
 }
