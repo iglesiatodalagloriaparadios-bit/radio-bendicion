@@ -1,6 +1,8 @@
 $(document).ready(function () {
 
     // --- Registro del Service Worker para PWA con Detección de Actualizaciones ---
+    let userClickedUpdate = false;
+
     if ('serviceWorker' in navigator) {
         window.addEventListener('load', () => {
             navigator.serviceWorker.register('/sw.js')
@@ -32,8 +34,16 @@ $(document).ready(function () {
 
         // Recargar la página una sola vez al activarse el nuevo Service Worker
         let refreshing = false;
+        const hadController = !!navigator.serviceWorker.controller;
         navigator.serviceWorker.addEventListener('controllerchange', () => {
-            if (!refreshing) {
+            if (!refreshing && hadController) {
+                // Si la radio está reproduciendo y el usuario NO hizo clic explícitamente en "Actualizar"
+                // (por ejemplo, la actualización se activó desde otra pestaña), posponemos la recarga
+                // para no interrumpir la reproducción.
+                if (isPlayingState && !userClickedUpdate) {
+                    console.log('Nueva versión del Service Worker activada, pero se pospone la recarga porque la radio está reproduciendo.');
+                    return;
+                }
                 refreshing = true;
                 window.location.reload();
             }
@@ -50,6 +60,7 @@ $(document).ready(function () {
         setTimeout(() => toast.addClass('show'), 50);
 
         $('#reloadPwaBtn').on('click', function() {
+            userClickedUpdate = true;
             if (reg.waiting) {
                 reg.waiting.postMessage({ type: 'SKIP_WAITING' });
             } else {
