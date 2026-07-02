@@ -4,9 +4,20 @@ $(document).ready(function () {
     let userClickedUpdate = false;
 
     if ('serviceWorker' in navigator) {
+        let swRegistration = null;
+
+        // Comprobar actualizaciones cada vez que se vuelve a abrir la app (entra en primer plano)
+        document.addEventListener('visibilitychange', () => {
+            if (document.visibilityState === 'visible' && swRegistration) {
+                console.log('App en primer plano: forzando búsqueda de actualizaciones PWA...');
+                swRegistration.update();
+            }
+        });
+
         window.addEventListener('load', () => {
             navigator.serviceWorker.register('/sw.js')
                 .then(reg => {
+                    swRegistration = reg;
                     console.log('Service Worker registrado con éxito:', reg.scope);
 
                     // Forzar una comprobación de actualización de inmediato al abrir la página
@@ -384,7 +395,6 @@ $(document).ready(function () {
         
         // Asignar URL fresca con cache-buster para evitar búfer muerto en caché del navegador
         radioAudio.src = `${STREAM_URL}?t=${Date.now()}`;
-        radioAudio.load();
         
         radioAudio.play().then(() => {
             console.log("Reconexión exitosa.");
@@ -503,9 +513,17 @@ $(document).ready(function () {
         
         // Si el usuario quería reproducir pero el audio se estanca
         if (isPlayingState && !reconnectTimeout) {
-            // Si la pantalla está bloqueada (hidden), reintentamos en 500ms antes de que el OS congele el hilo JS.
-            // Si está visible, damos un margen de 1500ms para permitir buffering natural.
-            const delay = document.visibilityState === 'hidden' ? 500 : 1500;
+            // Si la pantalla está bloqueada o en segundo plano, NO forzamos reconexión manual.
+            // Al hacer reasignación de src y .play() en segundo plano, el OS lo detecta como
+            // reproducción automática sin interacción del usuario y lanza NotAllowedError, matando la radio.
+            // Es mucho más seguro confiar en el buffering nativo del navegador cuando está en background.
+            if (document.visibilityState === 'hidden') {
+                console.log(`Señal estancada en segundo plano. Confiando en recuperación nativa del OS...`);
+                return;
+            }
+
+            // Si está visible, damos un margen de 15000ms para permitir buffering natural antes de forzar reconexión
+            const delay = 15000;
             console.log(`Señal en espera o estancada (${e.type}). Agendando reconexión en ${delay}ms...`);
             reconnectTimeout = setTimeout(() => {
                 reconnectTimeout = null;
@@ -582,7 +600,6 @@ $(document).ready(function () {
         
         // Asignar URL con cache-buster al iniciar para forzar conexión fresca
         radioAudio.src = `${STREAM_URL}?t=${Date.now()}`;
-        radioAudio.load();
         
         radioAudio.play().then(() => {
             // La visibilidad de botones se sincroniza por los eventos del elemento 'audio'
