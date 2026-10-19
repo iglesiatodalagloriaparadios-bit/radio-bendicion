@@ -1,4 +1,9 @@
-const CACHE_NAME = 'radio-bendicion-v33';
+// Base de devocionales (define DEVOTIONALS_DB) para los avisos diarios
+importScripts('/js/devotionals-db.js');
+
+const CACHE_NAME = 'radio-bendicion-v34';
+// Caché persistente para estado interno (no se borra al actualizar)
+const STATE_CACHE = 'radio-bendicion-state';
 const ASSETS_TO_CACHE = [
   '/',
   '/css/styles.css',
@@ -11,6 +16,10 @@ const ASSETS_TO_CACHE = [
   '/images/logo-maskable-192.png',
   '/images/logo-maskable-512.png',
   '/images/apple-touch-icon.png',
+  '/images/fondo-nav.jpeg',
+  '/images/fondo-nav1.jpeg',
+  '/images/fondo-nav2.jpeg',
+  '/images/fondo-nav3.jpeg',
   '/manifest.json'
 ];
 
@@ -30,7 +39,7 @@ self.addEventListener('activate', (event) => {
     caches.keys().then((cacheNames) => {
       return Promise.all(
         cacheNames.map((cacheName) => {
-          if (cacheName !== CACHE_NAME) {
+          if (cacheName !== CACHE_NAME && cacheName !== STATE_CACHE) {
             console.log('[Service Worker] Eliminando caché antigua:', cacheName);
             return caches.delete(cacheName);
           }
@@ -40,6 +49,42 @@ self.addEventListener('activate', (event) => {
   );
 });
 
+// Guardar en caché una respuesta válida del mismo dominio
+function putInCache(request, response) {
+  if (
+    response &&
+    response.status === 200 &&
+    response.type === 'basic' &&
+    request.method === 'GET'
+  ) {
+    const responseToCache = response.clone();
+    caches.open(CACHE_NAME).then((cache) => cache.put(request, responseToCache));
+  }
+  return response;
+}
+
+// Red primero: siempre la versión más reciente, con la caché como respaldo sin conexión.
+// Así los cambios publicados llegan sin depender de cambiar CACHE_NAME.
+function networkFirst(request) {
+  return fetch(request)
+    .then((response) => putInCache(request, response))
+    .catch(() =>
+      caches.match(request, { ignoreSearch: request.mode === 'navigate' }).then((cachedResponse) => {
+        if (cachedResponse) return cachedResponse;
+        // Si es una navegación y no está en caché, retornamos la página de inicio
+        if (request.mode === 'navigate') return caches.match('/');
+      })
+    );
+}
+
+// Caché primero: para imágenes y otros activos pesados que casi no cambian
+function cacheFirst(request) {
+  return caches.match(request).then((cachedResponse) => {
+    if (cachedResponse) return cachedResponse;
+    return fetch(request).then((response) => putInCache(request, response));
+  });
+}
+
 // Interceptar peticiones
 self.addEventListener('fetch', (event) => {
   const url = new URL(event.request.url);
@@ -47,46 +92,28 @@ self.addEventListener('fetch', (event) => {
   // EXCLUIR EL STREAMING DE AUDIO Y LAS PETICIONES DE LA API DE AZURACAST
   // El streaming y la API deben ir siempre a la red directamente
   if (
+    event.request.method !== 'GET' ||
     event.request.destination === 'audio' ||
     event.request.destination === 'video' ||
     event.request.headers.has('range') ||
-    url.hostname.includes('radio.radiobendicion.cl') || 
-    url.pathname.endsWith('.mp3') || 
+    url.hostname.includes('radio.radiobendicion.cl') ||
+    url.pathname.endsWith('.mp3') ||
     url.pathname.includes('api/nowplaying_static')
   ) {
     return; // No interceptar, dejar que vaya directamente a la red
   }
 
-  // Estrategia Cache-First falling back to Network para activos locales
-  event.respondWith(
-    caches.match(event.request).then((cachedResponse) => {
-      if (cachedResponse) {
-        return cachedResponse;
-      }
+  // Peticiones a otros dominios (Google Fonts, APIs, íconos): sin interceptar
+  if (url.origin !== self.location.origin) {
+    return;
+  }
 
-      return fetch(event.request).then((networkResponse) => {
-        // Guardar en caché dinámicamente nuevas peticiones del mismo dominio (por si acaso)
-        if (
-          networkResponse &&
-          networkResponse.status === 200 &&
-          networkResponse.type === 'basic' &&
-          event.request.method === 'GET'
-        ) {
-          const responseToCache = networkResponse.clone();
-          caches.open(CACHE_NAME).then((cache) => {
-            cache.put(event.request, responseToCache);
-          });
-        }
-        return networkResponse;
-      }).catch(() => {
-        // En caso de estar offline y no encontrar en caché,
-        // retornamos la página de inicio para peticiones de navegación HTML
-        if (event.request.mode === 'navigate') {
-          return caches.match('/');
-        }
-      });
-    })
-  );
+  const isAppCode =
+    event.request.mode === 'navigate' ||
+    ['document', 'script', 'style', 'manifest'].includes(event.request.destination) ||
+    url.pathname.endsWith('.json');
+
+  event.respondWith(isAppCode ? networkFirst(event.request) : cacheFirst(event.request));
 });
 
 // Escuchar evento push para recibir notificaciones del servidor
@@ -115,12 +142,44 @@ self.addEventListener('push', (event) => {
   );
 });
 
+// --- Aviso diario del devocional (Periodic Background Sync) ---
+const LAST_DEVOTIONAL_KEY = '/__last-devotional-notification';
+
+async function showDailyDevotional() {
+  const now = new Date();
+  const today = `${now.getFullYear()}-${now.getMonth() + 1}-${now.getDate()}`; // fecha local
+
+  // Evitar mostrar el mismo devocional dos veces en un día
+  const cache = await caches.open(STATE_CACHE);
+  const last = await cache.match(LAST_DEVOTIONAL_KEY);
+  if (last && (await last.text()) === today) return;
+
+  const devotional = DEVOTIONALS_DB[now.getDate()];
+  if (!devotional) return;
+
+  await self.registration.showNotification(`📖 ${devotional.titulo}`, {
+    body: `"${devotional.pasaje}" (${devotional.cita})`,
+    icon: '/images/logo-192.png',
+    badge: '/images/logo-192.png',
+    vibrate: [100, 50, 100],
+    tag: 'daily-devotional',
+    data: { url: '/#devocional' }
+  });
+  await cache.put(LAST_DEVOTIONAL_KEY, new Response(today));
+}
+
+self.addEventListener('periodicsync', (event) => {
+  if (event.tag === 'daily-devotional') {
+    event.waitUntil(showDailyDevotional());
+  }
+});
+
 // Escuchar clics en la notificación para abrir/enfocar la app
 self.addEventListener('notificationclick', (event) => {
   event.notification.close();
 
-  const targetUrl = event.notification.data && event.notification.data.url 
-    ? event.notification.data.url 
+  const targetUrl = event.notification.data && event.notification.data.url
+    ? event.notification.data.url
     : '/#devocional';
 
   event.waitUntil(

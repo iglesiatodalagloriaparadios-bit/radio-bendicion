@@ -662,24 +662,42 @@ $(document).ready(function () {
     const YOUTUBE_API_KEY = 'AIzaSyCKVAT0CX0Oj6He8CCEIDzsdenEHI1yn9E';       // API Key de Google Developer
     const ytLiveBtn = $('#ytLiveBtn');
 
+    // Lista de subidas del canal (mismo ID cambiando el prefijo "UC" por "UU")
+    const YOUTUBE_UPLOADS_PLAYLIST = 'UU' + YOUTUBE_CHANNEL_ID.slice(2);
+    const YT_CHECK_INTERVAL = 300000; // 5 minutos
+    let lastYouTubeCheck = 0;
+
+    // Usa playlistItems.list + videos.list (1 unidad de cuota cada uno) en lugar de
+    // search.list (100 unidades), para no agotar la cuota diaria de 10.000 unidades.
     async function checkYouTubeLive() {
         if (!YOUTUBE_CHANNEL_ID || !YOUTUBE_API_KEY || YOUTUBE_CHANNEL_ID.startsWith('YOUR_') || YOUTUBE_API_KEY.startsWith('YOUR_')) {
             ytLiveBtn.hide();
             return;
         }
+        if (!navigator.onLine) return;
 
-        const API_URL = `https://www.googleapis.com/youtube/v3/search?part=snippet&channelId=${YOUTUBE_CHANNEL_ID}&eventType=live&type=video&key=${YOUTUBE_API_KEY}`;
+        lastYouTubeCheck = Date.now();
+        const API_BASE = 'https://www.googleapis.com/youtube/v3';
 
         try {
-            const response = await fetch(API_URL);
-            const data = await response.json();
+            // 1. Últimos videos subidos (las transmisiones en vivo aparecen aquí)
+            const playlistResponse = await fetch(`${API_BASE}/playlistItems?part=contentDetails&maxResults=5&playlistId=${YOUTUBE_UPLOADS_PLAYLIST}&key=${YOUTUBE_API_KEY}`);
+            const playlistData = await playlistResponse.json();
+            const videoIds = (playlistData.items || []).map(item => item.contentDetails.videoId);
 
-            if (data && data.items && data.items.length > 0) {
-                const liveVideo = data.items[0];
-                const videoId = liveVideo.id.videoId;
-                
+            if (videoIds.length === 0) {
+                ytLiveBtn.hide();
+                return;
+            }
+
+            // 2. Revisar cuál de ellos está en vivo ahora mismo
+            const videosResponse = await fetch(`${API_BASE}/videos?part=snippet&id=${videoIds.join(',')}&key=${YOUTUBE_API_KEY}`);
+            const videosData = await videosResponse.json();
+            const liveVideo = (videosData.items || []).find(video => video.snippet.liveBroadcastContent === 'live');
+
+            if (liveVideo) {
                 // Enlazar al video en vivo actual
-                ytLiveBtn.attr('href', `https://www.youtube.com/watch?v=${videoId}`);
+                ytLiveBtn.attr('href', `https://www.youtube.com/watch?v=${liveVideo.id}`);
                 ytLiveBtn.css('display', 'inline-flex');
             } else {
                 ytLiveBtn.hide();
@@ -692,8 +710,18 @@ $(document).ready(function () {
 
     // Verificación inicial
     checkYouTubeLive();
-    // Verificar cada 5 minutos (300000 ms) para no agotar la cuota de la API de Google
-    setInterval(checkYouTubeLive, 300000);
+    // Verificar cada 5 minutos, solo si la página está visible (pestañas ocultas no gastan cuota)
+    setInterval(() => {
+        if (document.visibilityState === 'visible') {
+            checkYouTubeLive();
+        }
+    }, YT_CHECK_INTERVAL);
+    // Al volver a la página, verificar si ya pasó el intervalo
+    document.addEventListener('visibilitychange', () => {
+        if (document.visibilityState === 'visible' && Date.now() - lastYouTubeCheck > YT_CHECK_INTERVAL) {
+            checkYouTubeLive();
+        }
+    });
 
     // --- Lógica de los Carruseles ---
     $('.carousel-btn').on('click', function() {
@@ -752,6 +780,22 @@ $(document).ready(function () {
         }, 3000);
     }
 
+    // Copiar texto al portapapeles (API moderna con respaldo para navegadores antiguos)
+    function copyToClipboard(text) {
+        if (navigator.clipboard && window.isSecureContext) {
+            return navigator.clipboard.writeText(text);
+        }
+        return new Promise((resolve, reject) => {
+            const dummy = document.createElement('textarea');
+            dummy.value = text;
+            document.body.appendChild(dummy);
+            dummy.select();
+            const ok = document.execCommand('copy');
+            document.body.removeChild(dummy);
+            ok ? resolve() : reject(new Error('No se pudo copiar'));
+        });
+    }
+
     shareAppBtn.on('click', function() {
         const shareData = {
             title: 'Radio Bendición',
@@ -765,14 +809,9 @@ $(document).ready(function () {
                 .catch((err) => console.log('Error al compartir:', err));
         } else {
             // Fallback: copiar al portapapeles
-            const dummy = document.createElement('input');
-            const shareText = shareData.text + ' ' + shareData.url;
-            document.body.appendChild(dummy);
-            dummy.value = shareText;
-            dummy.select();
-            document.execCommand('copy');
-            document.body.removeChild(dummy);
-            showToast('📋 ¡Mensaje y enlace copiados para compartir!');
+            copyToClipboard(shareData.text + ' ' + shareData.url)
+                .then(() => showToast('📋 ¡Mensaje y enlace copiados para compartir!'))
+                .catch(() => showToast('⚠️ No se pudo copiar el enlace.'));
         }
     });
 
@@ -894,13 +933,9 @@ $(document).ready(function () {
                 `Oración: ${devotional.oracion}\n\n` +
                 `Escucha la señal en vivo en: ${window.location.origin || 'https://radiobendicion.cl'}`;
             
-            const dummy = document.createElement('textarea');
-            document.body.appendChild(dummy);
-            dummy.value = copyText;
-            dummy.select();
-            document.execCommand('copy');
-            document.body.removeChild(dummy);
-            showToast('📋 ¡Devocional copiado al portapapeles!');
+            copyToClipboard(copyText)
+                .then(() => showToast('📋 ¡Devocional copiado al portapapeles!'))
+                .catch(() => showToast('⚠️ No se pudo copiar el devocional.'));
         });
     }
 
@@ -918,13 +953,66 @@ $(document).ready(function () {
         }
     }
 
+    // Los avisos diarios usan Periodic Background Sync: el Service Worker se despierta
+    // una vez al día y muestra el devocional desde la base local (sin servidor).
+    // Solo está disponible en la app instalada en navegadores Chromium (Android).
+    const DAILY_SYNC_TAG = 'daily-devotional';
+    const supportsNotifications = 'Notification' in window;
+
+    async function getPeriodicSyncRegistration() {
+        if (!('serviceWorker' in navigator)) return null;
+        const reg = await navigator.serviceWorker.ready;
+        return 'periodicSync' in reg ? reg : null;
+    }
+
+    async function registerDailySync() {
+        try {
+            const reg = await getPeriodicSyncRegistration();
+            if (!reg) return false;
+            const status = await navigator.permissions.query({ name: 'periodic-background-sync' });
+            if (status.state !== 'granted') return false;
+            await reg.periodicSync.register(DAILY_SYNC_TAG, { minInterval: 24 * 60 * 60 * 1000 });
+            return true;
+        } catch (err) {
+            console.warn('No se pudo registrar la sincronización diaria:', err);
+            return false;
+        }
+    }
+
+    async function unregisterDailySync() {
+        try {
+            const reg = await getPeriodicSyncRegistration();
+            if (reg) await reg.periodicSync.unregister(DAILY_SYNC_TAG);
+        } catch (err) {
+            console.warn('No se pudo cancelar la sincronización diaria:', err);
+        }
+    }
+
+    async function activateDailyNotifications() {
+        const registered = await registerDailySync();
+        if (!registered) {
+            localStorage.setItem('devotional-notifications', 'unsubscribed');
+            updateNotifyBtnUI(false);
+            showToast('ℹ️ Los avisos diarios requieren la app instalada en Android. Abre la app para leer el devocional del día.');
+            return;
+        }
+        localStorage.setItem('devotional-notifications', 'subscribed');
+        updateNotifyBtnUI(true);
+        sendWelcomeNotification();
+    }
+
     // Verificar preferencia previa
     const isSubscribed = localStorage.getItem('devotional-notifications') === 'subscribed';
-    updateNotifyBtnUI(isSubscribed && Notification.permission === 'granted');
+    const notificationsActive = isSubscribed && supportsNotifications && Notification.permission === 'granted';
+    updateNotifyBtnUI(notificationsActive);
+    if (notificationsActive) {
+        // Renovar el registro por si el navegador lo descartó
+        registerDailySync();
+    }
 
     devotionalNotifyBtn.on('click', function() {
-        if (!('Notification' in window)) {
-            showToast('❌ Tu navegador no soporta notificaciones.');
+        if (!supportsNotifications) {
+            showToast('ℹ️ Tu navegador no soporta notificaciones. Abre la app para leer el devocional del día.');
             return;
         }
 
@@ -933,21 +1021,16 @@ $(document).ready(function () {
             const currentlyActive = devotionalNotifyBtn.hasClass('active');
             if (currentlyActive) {
                 localStorage.setItem('devotional-notifications', 'unsubscribed');
+                unregisterDailySync();
                 updateNotifyBtnUI(false);
                 showToast('🔕 Notificaciones desactivadas.');
             } else {
-                localStorage.setItem('devotional-notifications', 'subscribed');
-                updateNotifyBtnUI(true);
-                showToast('🔔 ¡Notificaciones activadas!');
+                activateDailyNotifications();
             }
         } else if (Notification.permission !== 'denied') {
             Notification.requestPermission().then(permission => {
                 if (permission === 'granted') {
-                    localStorage.setItem('devotional-notifications', 'subscribed');
-                    updateNotifyBtnUI(true);
-                    
-                    // Enviar notificación de bienvenida local
-                    sendWelcomeNotification();
+                    activateDailyNotifications();
                 } else {
                     showToast('❌ Permiso de notificaciones denegado.');
                 }
@@ -960,7 +1043,7 @@ $(document).ready(function () {
     function sendWelcomeNotification() {
         const title = "🔔 ¡Notificaciones Activadas!";
         const options = {
-            body: "Recibirás avisos diarios de Radio Bendición cuando el nuevo devocional esté listo.",
+            body: "Recibirás un aviso diario de Radio Bendición con el devocional del día.",
             icon: "images/logo-192.png",
             badge: "images/logo-192.png",
             vibrate: [100, 50, 100],
