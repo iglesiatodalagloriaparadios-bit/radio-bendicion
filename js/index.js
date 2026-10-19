@@ -48,16 +48,19 @@ $(document).ready(function () {
     let connectFailed = false;  // el último intento de conexión falló
 
     // --- Registro del Service Worker para PWA con Detección de Actualizaciones ---
+    // Cuando hay una versión nueva se ofrece el botón "Actualizar" (aviso flotante y tarjeta en "Más");
+    // la app nunca se recarga sola, así no se corta la radio ni se pierde lo que se está escribiendo.
     let userClickedUpdate = false;
+    let swRegistration = null;
+    let waitingWorker = null;
+    let manualUpdateCheck = false;
 
     if ('serviceWorker' in navigator) {
-        let swRegistration = null;
-
         // Comprobar actualizaciones cada vez que se vuelve a abrir la app (entra en primer plano)
         document.addEventListener('visibilitychange', () => {
             if (document.visibilityState === 'visible' && swRegistration) {
-                console.log('App en primer plano: forzando búsqueda de actualizaciones PWA...');
-                swRegistration.update();
+                console.log('App en primer plano: buscando actualizaciones PWA...');
+                swRegistration.update().catch(() => {});
             }
         });
 
@@ -67,8 +70,8 @@ $(document).ready(function () {
                     swRegistration = reg;
                     console.log('Service Worker registrado con éxito:', reg.scope);
 
-                    // Forzar una comprobación de actualización de inmediato al abrir la página
-                    reg.update();
+                    // Buscar una actualización de inmediato al abrir la página
+                    reg.update().catch(() => {});
 
                     // Detectar si hay una actualización en cola o en curso
                     reg.addEventListener('updatefound', () => {
@@ -77,7 +80,7 @@ $(document).ready(function () {
                             newWorker.addEventListener('statechange', () => {
                                 // Si el nuevo SW terminó de instalarse y ya está en espera (waiting)
                                 if (newWorker.state === 'installed') {
-                                    handleUpdate(reg, newWorker);
+                                    handleUpdate(newWorker);
                                 }
                             });
                         }
@@ -85,8 +88,10 @@ $(document).ready(function () {
 
                     // Si ya hay un SW esperando en segundo plano al cargar la página
                     if (reg.waiting) {
-                        handleUpdate(reg, reg.waiting);
+                        handleUpdate(reg.waiting);
                     }
+
+                    showAppVersion();
                 })
                 .catch(error => {
                     console.log('Registro de Service Worker fallido:', error);
@@ -98,11 +103,11 @@ $(document).ready(function () {
         const hadController = !!navigator.serviceWorker.controller;
         navigator.serviceWorker.addEventListener('controllerchange', () => {
             if (!refreshing && hadController) {
-                // Si la radio está reproduciendo y el usuario NO hizo clic explícitamente en "Actualizar"
+                // Si la radio está reproduciendo y el usuario NO tocó "Actualizar"
                 // (por ejemplo, la actualización se activó desde otra pestaña), posponemos la recarga
                 // para no interrumpir la reproducción.
                 if (isPlayingState && !userClickedUpdate) {
-                    console.log('Nueva versión del Service Worker activada, pero se pospone la recarga porque la radio está reproduciendo.');
+                    console.log('Nueva versión activada; la recarga se pospone porque la radio está sonando.');
                     return;
                 }
                 refreshing = true;
@@ -111,36 +116,73 @@ $(document).ready(function () {
         });
     }
 
-    // Función para manejar la actualización de manera inteligente
-    function handleUpdate(reg, worker) {
+    // Hay una versión nueva instalada y esperando: ofrecer el botón para aplicarla
+    function handleUpdate(worker) {
         if (!navigator.serviceWorker.controller) {
-            // Si es la primera vez que se registra el SW (no hay controlador previo), no hacemos nada
+            // Primera instalación (no había versión anterior): no hay nada que actualizar
             return;
         }
+        waitingWorker = worker;
+        manualUpdateCheck = false;
+        $('#updateCard').prop('hidden', false);
+        showToast(isPlayingState
+            ? 'Hay una versión nueva. Al actualizar se reiniciará la radio.'
+            : 'Hay una versión nueva de la app.', {
+            label: 'Actualizar',
+            fn: applyUpdate
+        }, 0);
+    }
 
-        if (isPlayingState) {
-            // Si está reproduciendo, ofrecemos actualizar para no interrumpir abruptamente la transmisión
-            showUpdateToast(reg);
+    function applyUpdate() {
+        userClickedUpdate = true;
+        if (waitingWorker) {
+            waitingWorker.postMessage({ type: 'SKIP_WAITING' });
         } else {
-            // Si no está reproduciendo (por ejemplo, acaba de entrar a la página), actualizamos de inmediato
-            console.log('Actualización detectada. Auto-actualizando...');
-            userClickedUpdate = true;
-            worker.postMessage({ type: 'SKIP_WAITING' });
+            window.location.reload();
         }
     }
 
-    function showUpdateToast(reg) {
-        showToast('Hay una versión nueva. Se aplicará al actualizar.', {
-            label: 'Actualizar',
-            fn: () => {
-                userClickedUpdate = true;
-                if (reg.waiting) {
-                    reg.waiting.postMessage({ type: 'SKIP_WAITING' });
-                } else {
-                    window.location.reload();
+    $('.js-apply-update').on('click', applyUpdate);
+
+    // Botón "Buscar actualizaciones" en "Más"
+    $('.js-check-update').on('click', function () {
+        if (!swRegistration) {
+            showToast('No se pudo buscar actualizaciones en este navegador.');
+            return;
+        }
+        if (waitingWorker) {
+            handleUpdate(waitingWorker);
+            return;
+        }
+        if (!navigator.onLine) {
+            showToast('Necesitas conexión a internet para buscar actualizaciones.');
+            return;
+        }
+        manualUpdateCheck = true;
+        showToast('Buscando actualizaciones…');
+        swRegistration.update().then(() => {
+            // Si hay una versión nueva, 'updatefound' mostrará el botón; si no, avisamos
+            setTimeout(() => {
+                if (manualUpdateCheck && !swRegistration.installing && !swRegistration.waiting) {
+                    manualUpdateCheck = false;
+                    showToast('Ya tienes la última versión.');
                 }
-            }
-        }, 0);
+            }, 1500);
+        }).catch(() => {
+            manualUpdateCheck = false;
+            showToast('No se pudo buscar actualizaciones. Intenta más tarde.');
+        });
+    });
+
+    // Mostrar la versión instalada (la informa el Service Worker)
+    function showAppVersion() {
+        const controller = navigator.serviceWorker.controller;
+        if (!controller || typeof MessageChannel === 'undefined') return;
+        const channel = new MessageChannel();
+        channel.port1.onmessage = (e) => {
+            if (e.data && e.data.version) $('#appVersion').text(e.data.version);
+        };
+        controller.postMessage({ type: 'GET_VERSION' }, [channel.port2]);
     }
 
     // --- Tema claro / oscuro ---
@@ -148,6 +190,32 @@ $(document).ready(function () {
         document.documentElement.setAttribute('data-theme', theme);
         storageSet('theme', theme);
         $('.js-theme').attr('aria-label', theme === 'dark' ? 'Cambiar a modo claro' : 'Cambiar a modo oscuro');
+        updateThemeColor();
+    }
+
+    // Color de la barra de estado del teléfono según la pantalla (rojo en Radio, fondo en el resto)
+    function updateThemeColor() {
+        const dark = document.documentElement.getAttribute('data-theme') === 'dark';
+        const onRadio = $body.attr('data-view') === 'radio';
+        const color = onRadio ? '#921628' : (dark ? '#171214' : '#f8f2ec');
+        $('meta[name="theme-color"]').attr('content', color);
+    }
+
+    // Vibración breve al tocar (solo Android; en el resto no hace nada)
+    function haptic() {
+        if (navigator.vibrate && window.matchMedia('(pointer: coarse)').matches) {
+            try { navigator.vibrate(8); } catch (e) { /* sin vibración */ }
+        }
+    }
+
+    // Teclado abierto en móvil: ocultar la barra inferior para que no tape los campos
+    if (window.visualViewport) {
+        const baseHeight = window.innerHeight;
+        window.visualViewport.addEventListener('resize', () => {
+            const keyboardOpen = window.visualViewport.height < baseHeight * 0.75
+                && /^(INPUT|TEXTAREA)$/.test((document.activeElement || {}).tagName || '');
+            $body.toggleClass('keyboard-open', keyboardOpen);
+        });
     }
 
     setTheme(storageGet('theme') === 'dark' ? 'dark' : 'light');
@@ -166,10 +234,16 @@ $(document).ready(function () {
         return VIEWS.includes(hash) ? hash : 'radio';
     }
 
+    const scrollByView = {};
+
     function showView(view) {
         if (view === currentView) return;
+        if (currentView) scrollByView[currentView] = window.scrollY;
+        const isFirstView = currentView === null;
         currentView = view;
         $body.attr('data-view', view);
+        updateThemeColor();
+        if (!isFirstView) haptic();
 
         $('.view').each(function () {
             this.hidden = this.dataset.view !== view;
@@ -182,7 +256,8 @@ $(document).ready(function () {
             }
         });
 
-        window.scrollTo(0, 0);
+        // Cada pestaña vuelve a donde se dejó, como en una app
+        window.scrollTo(0, scrollByView[view] || 0);
         updateMini();
         if (view === 'radio') {
             setTimeout(layoutMobileArt, 30);
@@ -723,6 +798,7 @@ $(document).ready(function () {
     }
 
     $(document).on('click', '.js-toggle-play', function () {
+        haptic();
         if (isPlayingState) {
             stopPlayback();
         } else {

@@ -2,10 +2,13 @@
   "name": "Radio Bendición - Iglesia Toda la Gloria para Dios",
   "short_name": "Radio Bendición",
   "description": "Aplicación oficial de la Iglesia Toda la Gloria para Dios y Radio Bendición. Sintoniza nuestra radio en vivo y conoce nuestros ministerios.",
+  "id": "/",
   "start_url": "/",
+  "scope": "/",
   "display": "standalone",
+  "display_override": ["standalone", "minimal-ui"],
   "background_color": "#f8f2ec",
-  "theme_color": "#b01e33",
+  "theme_color": "#921628",
   "orientation": "portrait",
   "icons": [
     {

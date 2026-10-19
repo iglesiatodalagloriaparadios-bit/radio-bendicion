@@ -13,7 +13,10 @@
 
   <!-- Configuración de PWA y Manifiesto -->
   <link rel="manifest" href="manifest.json">
-  <meta name="theme-color" content="#b01e33">
+  <meta name="theme-color" content="#921628">
+  <meta name="color-scheme" content="light dark">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="format-detection" content="telephone=no">
 
   <!-- Soporte para iOS / Apple Safari PWA -->
   <meta name="apple-mobile-web-app-capable" content="yes">
@@ -233,12 +236,16 @@
         </section>
 
         <section class="meetings" aria-labelledby="meetingsTitle">
-          <h2 id="meetingsTitle">Reuniones de la iglesia</h2>
+          <div class="section-head">
+            <div>
+              <h2 id="meetingsTitle">Reuniones de la iglesia</h2>
+              <a class="address" href="https://maps.app.goo.gl/4nD2Q5M8tN4B7LfN8" target="_blank" rel="noopener">
+                <svg class="ic" width="18" height="18"><use href="#i-pin"/></svg>
+                <span>Los Nogales 140, Padre Hurtado</span>
+              </a>
+            </div>
+          </div>
           <div class="pills js-meetings"></div>
-          <a class="address" href="https://maps.app.goo.gl/4nD2Q5M8tN4B7LfN8" target="_blank" rel="noopener">
-            <svg class="ic" width="18" height="18"><use href="#i-pin"/></svg>
-            <span>Los Nogales 140, Padre Hurtado</span>
-          </a>
         </section>
 
         <a class="yt-live js-yt-live" href="https://www.youtube.com/@RadioBendicion-i9x" target="_blank" rel="noopener" hidden>
@@ -366,7 +373,17 @@
         <button class="btn btn-secondary btn-lg btn-block js-share">
           <svg class="ic" width="18" height="18"><use href="#i-share"/></svg><span>Compartir la señal</span>
         </button>
-        <div class="muted app-note">Radio Bendición · disponible sin conexión</div>
+        <div class="update-card" id="updateCard" hidden>
+          <div class="update-card-text">
+            <strong>Nueva versión disponible</strong>
+            <span>Actualiza para ver los últimos cambios.</span>
+          </div>
+          <button class="btn btn-primary js-apply-update">Actualizar</button>
+        </div>
+        <div class="app-meta">
+          <span class="muted">Radio Bendición · <span id="appVersion">versión actual</span> · disponible sin conexión</span>
+          <button type="button" class="link-btn js-check-update">Buscar actualizaciones</button>
+        </div>
       </div>
       <section class="schedule mobile-only" aria-labelledby="scheduleTitleM">
         <div class="section-head">

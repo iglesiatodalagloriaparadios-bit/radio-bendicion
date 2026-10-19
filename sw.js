@@ -1,7 +1,7 @@
 // Base de devocionales (define DEVOTIONALS_DB) para los avisos diarios
 importScripts('/js/devotionals-db.js');
 
-const CACHE_NAME = 'radio-bendicion-v36';
+const CACHE_NAME = 'radio-bendicion-v37';
 // Caché persistente para estado interno (no se borra al actualizar)
 const STATE_CACHE = 'radio-bendicion-state';
 const ASSETS_TO_CACHE = [
@@ -203,5 +203,9 @@ self.addEventListener('notificationclick', (event) => {
 self.addEventListener('message', (event) => {
   if (event.data && event.data.type === 'SKIP_WAITING') {
     self.skipWaiting();
+  }
+  // La página pregunta qué versión está instalada
+  if (event.data && event.data.type === 'GET_VERSION' && event.ports && event.ports[0]) {
+    event.ports[0].postMessage({ version: CACHE_NAME.replace('radio-bendicion-', '') });
   }
 });
