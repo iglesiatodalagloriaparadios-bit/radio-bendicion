@@ -1,7 +1,7 @@
 // Base de devocionales (define DEVOTIONALS_DB) para los avisos diarios
 importScripts('/js/devotionals-db.js');
 
-const CACHE_NAME = 'radio-bendicion-v34';
+const CACHE_NAME = 'radio-bendicion-v36';
 // Caché persistente para estado interno (no se borra al actualizar)
 const STATE_CACHE = 'radio-bendicion-state';
 const ASSETS_TO_CACHE = [
@@ -10,16 +10,14 @@ const ASSETS_TO_CACHE = [
   '/js/devotionals-db.js',
   '/js/index.js',
   '/js/jquery-4.0.0.min.js',
-  '/images/logo.png',
   '/images/logo-192.png',
   '/images/logo-512.png',
   '/images/logo-maskable-192.png',
   '/images/logo-maskable-512.png',
   '/images/apple-touch-icon.png',
-  '/images/fondo-nav.jpeg',
-  '/images/fondo-nav1.jpeg',
-  '/images/fondo-nav2.jpeg',
-  '/images/fondo-nav3.jpeg',
+  '/images/logo-white.png',
+  '/images/logo-mark.png',
+  '/images/programacion-semanal.png',
   '/manifest.json'
 ];
 

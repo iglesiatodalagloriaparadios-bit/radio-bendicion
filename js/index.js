@@ -1,5 +1,52 @@
 $(document).ready(function () {
 
+    const $body = $('body');
+
+    // --- Almacenamiento local seguro (puede fallar en modo privado) ---
+    function storageGet(key) {
+        try { return localStorage.getItem(key); } catch (e) { return null; }
+    }
+    function storageSet(key, value) {
+        try { localStorage.setItem(key, value); } catch (e) { /* sin almacenamiento */ }
+    }
+
+    // --- Notificación flotante (toast) ---
+    const $toast = $('#toast');
+    const $toastText = $('#toastText');
+    const $toastAction = $('#toastAction');
+    let toastTimer = null;
+
+    // action: { label, fn } opcional; ms = 0 deja el aviso abierto hasta que se cierre
+    function showToast(message, action, ms) {
+        clearTimeout(toastTimer);
+        $toastText.text(message);
+        $toastAction.off('click');
+        if (action) {
+            $toastAction.text(action.label).prop('hidden', false).on('click', function () {
+                hideToast();
+                action.fn();
+            });
+        } else {
+            $toastAction.prop('hidden', true);
+        }
+        $toast.prop('hidden', false);
+        if (ms !== 0) {
+            toastTimer = setTimeout(hideToast, ms || 3200);
+        }
+    }
+
+    function hideToast() {
+        clearTimeout(toastTimer);
+        $toast.prop('hidden', true);
+    }
+
+    $('#toastClose').on('click', hideToast);
+
+    // --- Estado del reproductor (declarado aquí porque lo usa la lógica de actualizaciones) ---
+    let isPlayingState = false; // true si el usuario quiere que la radio suene
+    let isBuffering = false;
+    let connectFailed = false;  // el último intento de conexión falló
+
     // --- Registro del Service Worker para PWA con Detección de Actualizaciones ---
     let userClickedUpdate = false;
 
@@ -72,7 +119,7 @@ $(document).ready(function () {
         }
 
         if (isPlayingState) {
-            // Si está reproduciendo, mostramos el toast interactivo para no interrumpir abruptamente la transmisión
+            // Si está reproduciendo, ofrecemos actualizar para no interrumpir abruptamente la transmisión
             showUpdateToast(reg);
         } else {
             // Si no está reproduciendo (por ejemplo, acaba de entrar a la página), actualizamos de inmediato
@@ -82,190 +129,195 @@ $(document).ready(function () {
         }
     }
 
-    // Función toast interactiva para actualizaciones
     function showUpdateToast(reg) {
-        $('.custom-toast').remove();
-        
-        const toast = $('<div class="custom-toast update-toast">✨ Nueva versión disponible. <button id="reloadPwaBtn" class="toast-btn">Actualizar</button></div>');
-        $('body').append(toast);
-        
-        setTimeout(() => toast.addClass('show'), 50);
-
-        $('#reloadPwaBtn').on('click', function() {
-            userClickedUpdate = true;
-            if (reg.waiting) {
-                reg.waiting.postMessage({ type: 'SKIP_WAITING' });
-            } else {
-                window.location.reload();
+        showToast('Hay una versión nueva. Se aplicará al actualizar.', {
+            label: 'Actualizar',
+            fn: () => {
+                userClickedUpdate = true;
+                if (reg.waiting) {
+                    reg.waiting.postMessage({ type: 'SKIP_WAITING' });
+                } else {
+                    window.location.reload();
+                }
             }
-        });
+        }, 0);
     }
 
+    // --- Tema claro / oscuro ---
+    function setTheme(theme) {
+        document.documentElement.setAttribute('data-theme', theme);
+        storageSet('theme', theme);
+        $('.js-theme').attr('aria-label', theme === 'dark' ? 'Cambiar a modo claro' : 'Cambiar a modo oscuro');
+    }
+
+    setTheme(storageGet('theme') === 'dark' ? 'dark' : 'light');
+
+    $('.js-theme').on('click', function () {
+        setTheme(document.documentElement.getAttribute('data-theme') === 'dark' ? 'light' : 'dark');
+    });
+
+    // --- Navegación entre vistas (Radio, Devocional, Oración, App) ---
+    const VIEWS = ['radio', 'devocional', 'oracion', 'app'];
+    let currentView = null;
+
+    function viewFromHash() {
+        const hash = window.location.hash.replace('#', '');
+        // Enlaces antiguos (#inicio, #iglesia, #horarios...) llevan a la radio
+        return VIEWS.includes(hash) ? hash : 'radio';
+    }
+
+    function showView(view) {
+        if (view === currentView) return;
+        currentView = view;
+        $body.attr('data-view', view);
+
+        $('.view').each(function () {
+            this.hidden = this.dataset.view !== view;
+        });
+        $('[data-nav]').each(function () {
+            if (this.dataset.nav === view) {
+                this.setAttribute('aria-current', 'page');
+            } else {
+                this.removeAttribute('aria-current');
+            }
+        });
+
+        window.scrollTo(0, 0);
+        updateMini();
+        if (view === 'radio') {
+            setTimeout(layoutMobileArt, 30);
+        }
+        if (view === 'devocional') {
+            centerSelectedDay();
+        }
+    }
+
+    function goTo(view) {
+        if (window.location.hash !== '#' + view) {
+            window.location.hash = view;
+        } else {
+            showView(view);
+        }
+    }
+
+    $(window).on('hashchange', function () {
+        showView(viewFromHash());
+    });
+
+    // --- Portada: escenas de fondo que se alternan cada 6 segundos ---
+    const $scenes = $('.scene');
+    let sceneIndex = 0;
+    setInterval(() => {
+        if (document.hidden || currentView !== 'radio') return;
+        $scenes.eq(sceneIndex).removeClass('is-active');
+        sceneIndex = (sceneIndex + 1) % $scenes.length;
+        $scenes.eq(sceneIndex).addClass('is-active');
+    }, 6000);
+
     // --- Lógica de Instalación de PWA (Android & iOS) ---
-    let deferredPrompt;
-    const installAppBtn = $('#installAppBtn');
+    let deferredPrompt = null;
+    const $installBtn = $('#installAppBtn');
+    const $installLabel = $('#installLabel');
 
     // Detección de iOS (iPhone, iPad, iPod)
     const isIos = /iphone|ipad|ipod/.test(navigator.userAgent.toLowerCase());
-    
+
     // Detección de si la app ya está instalada (en modo de pantalla completa/standalone)
     const isStandalone = window.navigator.standalone || window.matchMedia('(display-mode: standalone)').matches;
 
-    // Elementos del DOM para la guía iOS
-    const iosGuideModal = $('#iosGuideModal');
-    const iosInstallBanner = $('#iosInstallBanner');
-    let currentStep = 1;
+    function markInstalled() {
+        $installLabel.text('Ya está instalada');
+        $installBtn.prop('disabled', true);
+    }
+
+    if (isStandalone) {
+        markInstalled();
+    } else if (isIos) {
+        $installLabel.text('Ver cómo instalar');
+    }
+
+    // Comportamiento nativo de PWA para Android/Chrome/Edge/Desktop
+    window.addEventListener('beforeinstallprompt', (e) => {
+        e.preventDefault();
+        deferredPrompt = e;
+    });
+
+    window.addEventListener('appinstalled', () => {
+        console.log('PWA instalada correctamente');
+        deferredPrompt = null;
+        markInstalled();
+    });
+
+    $installBtn.on('click', async function () {
+        if (isIos) {
+            openIosGuide();
+            return;
+        }
+        if (!deferredPrompt) {
+            showToast('Abre el menú del navegador y elige “Instalar aplicación”.');
+            return;
+        }
+        deferredPrompt.prompt();
+        const { outcome } = await deferredPrompt.userChoice;
+        console.log(`Elección de instalación: ${outcome}`);
+        deferredPrompt = null;
+        if (outcome === 'accepted') {
+            showToast('¡Listo! Radio Bendición ya está en tu inicio.');
+        }
+    });
+
+    // Guía de instalación para iOS
+    const $iosGuide = $('#iosGuideModal');
+    const $iosBanner = $('#iosBanner');
 
     function openIosGuide() {
-        iosGuideModal.addClass('open');
-        iosInstallBanner.removeClass('show'); // Oculta el banner al abrir la guía
-        showStep(1);
+        $iosGuide.prop('hidden', false);
+        $iosGuide.find('.js-close-ios-guide').last().trigger('focus');
     }
 
     function closeIosGuide() {
-        iosGuideModal.removeClass('open');
+        $iosGuide.prop('hidden', true);
     }
 
-    function showStep(stepNum) {
-        currentStep = stepNum;
-        
-        // Alternar slides
-        $('.ios-step-slide').removeClass('active prev-step');
-        $('.ios-step-slide').each(function() {
-            const slideStep = $(this).data('step');
-            if (slideStep === currentStep) {
-                $(this).addClass('active');
-            } else if (slideStep < currentStep) {
-                $(this).addClass('prev-step');
-            }
-        });
-
-        // Actualizar indicadores (puntos de progreso)
-        $('.ios-step-dot').removeClass('active');
-        $(`.ios-step-dot[data-step="${currentStep}"]`).addClass('active');
-
-        // Actualizar botones del footer
-        $('#iosPrevBtn').prop('disabled', currentStep === 1);
-        if (currentStep === 4) {
-            $('#iosNextBtn').text('Entendido');
-        } else {
-            $('#iosNextBtn').text('Siguiente');
-        }
+    if (isIos && !isStandalone && !storageGet('ios-install-banner-closed')) {
+        $iosBanner.prop('hidden', false);
     }
 
-    if (isIos && !isStandalone) {
-        // En iOS, el botón de instalación abre la guía interactiva
-        installAppBtn.html('<span>📲</span> Instalar Aplicación').show();
-        
-        installAppBtn.on('click', function() {
-            openIosGuide();
-        });
+    $('.js-open-ios-guide').on('click', openIosGuide);
+    $('.js-close-ios-guide').on('click', closeIosGuide);
 
-        // Mostrar invitación flotante a instalar después de 3.5 segundos si no se ha cerrado antes
-        if (!localStorage.getItem('ios-install-banner-closed')) {
-            setTimeout(() => {
-                iosInstallBanner.addClass('show');
-            }, 3500);
-        }
-
-        // Navegación dentro del wizard interactivo
-        $('#iosPrevBtn').on('click', function() {
-            if (currentStep > 1) {
-                showStep(currentStep - 1);
-            }
-        });
-
-        $('#iosNextBtn').on('click', function() {
-            if (currentStep < 4) {
-                showStep(currentStep + 1);
-            } else {
-                closeIosGuide();
-            }
-        });
-
-        // Cerrar modal
-        $('#closeIosModalBtn').on('click', closeIosGuide);
-        
-        // Cerrar al hacer clic en el backdrop
-        iosGuideModal.on('click', function(e) {
-            if ($(e.target).is(iosGuideModal)) {
-                closeIosGuide();
-            }
-        });
-
-        // Cerrar banner
-        $('#closeIosBannerBtn').on('click', function(e) {
-            e.stopPropagation(); // Evitar disparar el clic del banner
-            iosInstallBanner.removeClass('show');
-            localStorage.setItem('ios-install-banner-closed', 'true');
-        });
-
-        // Clic en el banner para abrir la guía
-        iosInstallBanner.on('click', function(e) {
-            if (!$(e.target).closest('#closeIosBannerBtn').length) {
-                openIosGuide();
-            }
-        });
-
-    } else {
-        // Comportamiento nativo de PWA para Android/Chrome/Edge/Desktop
-        window.addEventListener('beforeinstallprompt', (e) => {
-            e.preventDefault();
-            deferredPrompt = e;
-            installAppBtn.show();
-        });
-
-        installAppBtn.on('click', async () => {
-            if (!deferredPrompt) return;
-            deferredPrompt.prompt();
-            const { outcome } = await deferredPrompt.userChoice;
-            console.log(`Elección de instalación: ${outcome}`);
-            deferredPrompt = null;
-            installAppBtn.hide();
-        });
-    }
-
-    window.addEventListener('appinstalled', (event) => {
-        console.log('PWA instalada correctamente');
-        installAppBtn.hide();
-    });
-
-    const menuBtn = $('#menuBtn');
-    const menu = $('#menu');
-
-    menuBtn.on('click', function () {
-        menu.toggleClass('open');
-        menuBtn.text(menu.hasClass('open') ? '✕' : '☰');
-    });
-
-    // Cerrar menú al hacer clic en el backdrop
-    menu.on('click', function (e) {
-        if ($(e.target).is(menu)) {
-            menu.removeClass('open');
-            menuBtn.text('☰');
+    // Cerrar al hacer clic en el fondo
+    $iosGuide.on('click', function (e) {
+        if ($(e.target).is($iosGuide)) {
+            closeIosGuide();
         }
     });
 
+    $(document).on('keydown', function (e) {
+        if (e.key === 'Escape' && !$iosGuide.prop('hidden')) {
+            closeIosGuide();
+        }
+    });
 
-
-    $('#year').text(new Date().getFullYear());
+    $('#closeIosBannerBtn').on('click', function () {
+        $iosBanner.prop('hidden', true);
+        storageSet('ios-install-banner-closed', 'true');
+    });
 
     // --- Lógica del Reproductor de Radio ---
     const radioAudio = document.getElementById('radioAudio');
-    const playBtn = $('#playBtn');
-    const pauseBtn = $('#pauseBtn');
-    const volumeSlider = $('#volumeSlider');
-    const nowPlayingText = $('.now-playing');
+    const $wakeBadge = $('#wakeBadge');
+    const $mini = $('#mini');
 
     // URL de la señal de streaming y API de AzuraCast
     const STREAM_URL = 'https://radio.radiobendicion.cl/listen/radio_bendici%C3%B3n/radio.mp3';
     const API_URL = 'https://radio.radiobendicion.cl/api/nowplaying_static/radio_bendici%C3%B3n.json';
 
-    let currentSongText = 'Sintonizando la señal...';
-    let isBuffering = false;
+    const GENERIC_TITLE = 'Radio Bendición en vivo';
+    const GENERIC_ARTIST = 'Alabanza y Palabra las 24 horas';
+    let currentSong = null; // { title, artist } desde la API
 
-    // --- Control de reconexión y estado deseado ---
-    let isPlayingState = false; // true si el usuario quiere que la radio suene
+    // --- Control de reconexión ---
     let reconnectTimeout = null;
     let retryCount = 0;
     const MAX_RETRIES = 5;
@@ -284,9 +336,11 @@ $(document).ready(function () {
             try {
                 wakeLock = await navigator.wakeLock.request('screen');
                 console.log('Screen Wake Lock activado correctamente.');
+                $wakeBadge.prop('hidden', false);
                 wakeLock.addEventListener('release', () => {
                     console.log('Screen Wake Lock fue liberado.');
                     wakeLock = null;
+                    $wakeBadge.prop('hidden', true);
                 });
             } catch (err) {
                 console.warn(`No se pudo obtener el Screen Wake Lock: ${err.message}`);
@@ -298,6 +352,7 @@ $(document).ready(function () {
         if (wakeLock !== null) {
             wakeLock.release().then(() => {
                 wakeLock = null;
+                $wakeBadge.prop('hidden', true);
                 console.log('Screen Wake Lock liberado manualmente.');
             }).catch(err => {
                 console.warn('Error al liberar el Screen Wake Lock:', err);
@@ -316,11 +371,10 @@ $(document).ready(function () {
     // --- Soporte de Media Session API ---
     function updateMediaSession() {
         if ('mediaSession' in navigator) {
-            const cleanArtistText = currentSongText === 'Sintonizando la señal...' ? 'Señal en Vivo' : currentSongText;
             navigator.mediaSession.metadata = new MediaMetadata({
-                title: 'Radio Bendición',
-                artist: cleanArtistText,
-                album: 'Iglesia Toda la Gloria para Dios',
+                title: currentSong ? currentSong.title : 'Radio Bendición',
+                artist: currentSong ? (currentSong.artist || 'Radio Bendición') : 'Señal en Vivo',
+                album: 'Radio Bendición · En vivo',
                 artwork: [
                     { src: window.location.origin + '/images/logo-192.png', sizes: '192x192', type: 'image/png' },
                     { src: window.location.origin + '/images/logo-512.png', sizes: '512x512', type: 'image/png' }
@@ -337,28 +391,28 @@ $(document).ready(function () {
 
     // Configurar controladores de Media Session una sola vez
     if ('mediaSession' in navigator) {
-        navigator.mediaSession.setActionHandler('play', function() {
-            if (playBtn.is(':visible')) {
-                playBtn.click();
+        navigator.mediaSession.setActionHandler('play', function () {
+            if (!isPlayingState) {
+                startPlayback();
             }
         });
-        navigator.mediaSession.setActionHandler('pause', function() {
-            if (pauseBtn.is(':visible')) {
-                pauseBtn.click();
+        navigator.mediaSession.setActionHandler('pause', function () {
+            if (isPlayingState) {
+                stopPlayback();
             }
         });
-        navigator.mediaSession.setActionHandler('stop', function() {
-            if (pauseBtn.is(':visible')) {
-                pauseBtn.click();
+        navigator.mediaSession.setActionHandler('stop', function () {
+            if (isPlayingState) {
+                stopPlayback();
             }
         });
-        navigator.mediaSession.setActionHandler('previoustrack', function() {
+        navigator.mediaSession.setActionHandler('previoustrack', function () {
             console.log("Media Session: previoustrack pulsado.");
             if (isPlayingState) {
                 attemptReconnect();
             }
         });
-        navigator.mediaSession.setActionHandler('nexttrack', function() {
+        navigator.mediaSession.setActionHandler('nexttrack', function () {
             console.log("Media Session: nexttrack pulsado.");
             if (isPlayingState) {
                 attemptReconnect();
@@ -375,9 +429,10 @@ $(document).ready(function () {
 
         if (retryCount >= MAX_RETRIES) {
             console.warn("Límite de reconexiones alcanzado");
-            showToast('⚠️ Se interrumpió la señal de la radio. Presiona Play para intentar conectar nuevamente.');
+            showToast('Se interrumpió la señal. Toca reproducir para intentar de nuevo.');
             isPlayingState = false;
             isBuffering = false;
+            connectFailed = true;
             resetReconnect();
             // Asegurar descarga limpia ante desconexión permanente
             radioAudio.removeAttribute('src');
@@ -392,10 +447,10 @@ $(document).ready(function () {
         console.log(`Reconectando... Intento ${retryCount}/${MAX_RETRIES}`);
         isBuffering = true;
         updatePlayerUI();
-        
+
         // Asignar URL fresca con cache-buster para evitar búfer muerto en caché del navegador
         radioAudio.src = `${STREAM_URL}?t=${Date.now()}`;
-        
+
         radioAudio.play().then(() => {
             console.log("Reconexión exitosa.");
             isBuffering = false;
@@ -414,11 +469,11 @@ $(document).ready(function () {
                 radioAudio.removeAttribute('src');
                 radioAudio.load();
                 updatePlayerUI();
-                showToast('⚠️ Reproducción suspendida por el navegador. Presiona Play para escuchar.');
+                showToast('El navegador pausó la radio. Toca reproducir para escuchar.');
                 releaseWakeLock();
             } else {
                 // Programar el siguiente intento para problemas de red
-                // Si la pantalla está bloqueada o en background (hidden), reintentamos más rápido (2s) 
+                // Si la pantalla está bloqueada o en background (hidden), reintentamos más rápido (2s)
                 // antes de que el hilo JS sea completamente congelado por el OS.
                 const delay = document.visibilityState === 'hidden' ? 2000 : 4000;
                 console.log(`Fallo de red. Programando reconexión en ${delay}ms...`);
@@ -430,32 +485,79 @@ $(document).ready(function () {
     function updateNowPlaying() {
         // Intentar actualizar metadatos con cache-buster para evitar caché
         const urlWithCacheBuster = `${API_URL}?t=${Date.now()}`;
-        
-        $.getJSON(urlWithCacheBuster, function(data) {
+
+        $.getJSON(urlWithCacheBuster, function (data) {
             if (data && data.now_playing && data.now_playing.song) {
                 const song = data.now_playing.song;
-                const text = song.artist ? `${song.artist} - ${song.title}` : song.title;
-                currentSongText = text;
-                updatePlayerUI();
-                updateMediaSession();
+                const title = (song.title || '').trim();
+                if (title) {
+                    currentSong = { title: title, artist: (song.artist || '').trim() };
+                    updatePlayerUI();
+                    updateMediaSession();
+                }
             }
-        }).fail(function() {
+        }).fail(function () {
             console.warn('No se pudieron cargar los metadatos de la radio.');
         });
     }
 
+    // Sincroniza toda la interfaz del reproductor (portada y mini reproductor) con el estado actual
     function updatePlayerUI() {
+        let state;
+        let statusText;
+
         if (!navigator.onLine) {
-            nowPlayingText.text('Modo sin conexión • Streaming no disponible');
-        } else if (radioAudio.error) {
-            nowPlayingText.text('Error al conectar con la señal');
-        } else if (isBuffering) {
-            nowPlayingText.text('Sintonizando la señal (cargando)...');
-        } else if (radioAudio.paused) {
-            nowPlayingText.text(`Streaming pausado • En vivo: ${currentSongText}`);
+            state = 'offline';
+            statusText = 'Sin conexión · volverá sola';
+        } else if (isPlayingState && isBuffering) {
+            state = 'busy';
+            statusText = retryCount > 0
+                ? `Reconectando (${retryCount} de ${MAX_RETRIES})…`
+                : 'Conectando con la señal…';
+        } else if (isPlayingState && radioAudio.paused) {
+            state = 'busy';
+            statusText = 'Recuperando el audio…';
+        } else if (isPlayingState) {
+            state = 'playing';
+            statusText = 'Sonando en vivo';
+        } else if (connectFailed) {
+            state = 'error';
+            statusText = 'No pudimos conectar. Intenta otra vez.';
         } else {
-            nowPlayingText.text(`Estás escuchando: ${currentSongText}`);
+            state = 'idle';
+            statusText = 'Toca para escuchar en vivo';
         }
+
+        $body.attr('data-player', state);
+        $('.js-status-text').text(statusText);
+
+        const title = currentSong ? currentSong.title : GENERIC_TITLE;
+        const artist = currentSong ? (currentSong.artist || 'Radio Bendición') : GENERIC_ARTIST;
+        const $titles = $('.js-track-title');
+        if ($titles.first().text() !== title) {
+            $titles.text(title);
+            // Reiniciar la animación de entrada del título en la portada
+            document.querySelectorAll('.now-title, .m-title').forEach(el => {
+                el.classList.remove('is-changing');
+                void el.offsetWidth;
+                el.classList.add('is-changing');
+            });
+            layoutMobileArt();
+        }
+        $('.js-track-artist').text(artist);
+
+        $('.js-toggle-play')
+            .attr('aria-label', isPlayingState ? 'Pausar radio' : 'Escuchar radio')
+            .prop('disabled', !navigator.onLine);
+
+        updateMini();
+    }
+
+    // Mini reproductor: visible fuera de la vista Radio mientras suena
+    function updateMini() {
+        const show = currentView !== null && currentView !== 'radio' && isPlayingState;
+        $mini.prop('hidden', !show);
+        $body.toggleClass('has-mini', show);
     }
 
     // --- Control de Polling de Metadatos ---
@@ -479,14 +581,11 @@ $(document).ready(function () {
     updateNowPlaying();
 
     // Eventos del elemento de audio para actualizar la interfaz inmediatamente
-    $(radioAudio).on('play', function() {
+    $(radioAudio).on('play', function () {
         isPlayingState = true;
         isBuffering = true;
-        
-        // Sincronizar UI de botones
-        playBtn.hide();
-        pauseBtn.show();
-        
+        connectFailed = false;
+
         updatePlayerUI();
         startMetadataPolling(); // Polling activo solo al reproducir
         updateMediaPlaybackState('playing');
@@ -494,23 +593,19 @@ $(document).ready(function () {
         requestWakeLock(); // Activar el wake lock cuando comience a sonar
     });
 
-    $(radioAudio).on('playing', function() {
+    $(radioAudio).on('playing', function () {
         isBuffering = false;
         resetReconnect();
-        
-        // Sincronizar UI de botones
-        playBtn.hide();
-        pauseBtn.show();
-        
+
         updatePlayerUI();
         updateMediaPlaybackState('playing');
         requestWakeLock(); // Asegurar wake lock activo
     });
 
-    $(radioAudio).on('waiting stalled', function(e) {
+    $(radioAudio).on('waiting stalled', function (e) {
         isBuffering = true;
         updatePlayerUI();
-        
+
         // Si el usuario quería reproducir pero el audio se estanca
         if (isPlayingState && !reconnectTimeout) {
             // Si la pantalla está bloqueada o en segundo plano, NO forzamos reconexión manual.
@@ -532,13 +627,9 @@ $(document).ready(function () {
         }
     });
 
-    $(radioAudio).on('pause', function() {
+    $(radioAudio).on('pause', function () {
         isBuffering = false;
-        
-        // Sincronizar UI de botones
-        pauseBtn.hide();
-        playBtn.show();
-        
+
         updatePlayerUI();
         stopMetadataPolling(); // Detener polling en pausa
         updateMediaPlaybackState('paused');
@@ -546,7 +637,7 @@ $(document).ready(function () {
         if (!isPlayingState) {
             // Si el usuario pausó explícitamente, liberamos el wake lock
             releaseWakeLock();
-        } else if (navigator.onLine && !$('body').hasClass('is-offline')) {
+        } else if (navigator.onLine && !$body.hasClass('is-offline')) {
             // El audio fue pausado por el OS/navegador inesperadamente en segundo plano
             console.warn("Audio pausado inesperadamente en segundo plano. Intentando recuperar reproducción...");
             const now = Date.now();
@@ -568,81 +659,79 @@ $(document).ready(function () {
         }
     });
 
-    $(radioAudio).on('error', function(e) {
+    $(radioAudio).on('error', function (e) {
+        // Al quitar el src a propósito (pausa) el navegador también emite 'error': lo ignoramos
+        if (!radioAudio.getAttribute('src')) return;
+
         console.error("Error en elemento de audio:", e);
         isBuffering = false;
-        
-        // Sincronizar UI de botones
-        pauseBtn.hide();
-        playBtn.show();
-        
+
         stopMetadataPolling(); // Detener polling ante error
-        
+
         if (isPlayingState) {
             console.log("Error detectado en reproducción activa. Intentando reconectar inmediatamente...");
             attemptReconnect();
         } else {
-            nowPlayingText.text('Error al conectar con la señal');
+            connectFailed = true;
+            updatePlayerUI();
             updateMediaPlaybackState('none');
             releaseWakeLock();
         }
     });
 
-    playBtn.on('click', function() {
+    function startPlayback() {
         if (!navigator.onLine) {
-            showToast('⚠️ No tienes conexión a internet para reproducir la radio.');
+            showToast('No tienes conexión a internet para reproducir la radio.');
             return;
         }
         isPlayingState = true;
         isBuffering = true;
+        connectFailed = false;
         resetReconnect();
-        nowPlayingText.text('Conectando con la señal...');
-        
+        updatePlayerUI();
+
         // Asignar URL con cache-buster al iniciar para forzar conexión fresca
         radioAudio.src = `${STREAM_URL}?t=${Date.now()}`;
-        
+
         radioAudio.play().then(() => {
-            // La visibilidad de botones se sincroniza por los eventos del elemento 'audio'
+            // La interfaz se sincroniza con los eventos del elemento 'audio'
             updateMediaSession();
         }).catch(err => {
             console.error("Error al reproducir:", err);
             isBuffering = false;
             isPlayingState = false;
+            connectFailed = err.name !== 'NotAllowedError' && err.name !== 'AbortError';
             radioAudio.removeAttribute('src');
             radioAudio.load();
             updatePlayerUI();
             updateMediaPlaybackState('none');
         });
-    });
+    }
 
-    pauseBtn.on('click', function() {
+    function stopPlayback() {
         isPlayingState = false;
+        isBuffering = false;
         resetReconnect();
         radioAudio.pause();
         // Liberar conexión de red y detener descarga de datos móviles
         radioAudio.removeAttribute('src');
         radioAudio.load();
-        // La visibilidad de botones se sincroniza por el evento 'pause' del elemento 'audio'
-    });
-
-    // Cargar volumen guardado o establecer por defecto (0.8)
-    const savedVolume = localStorage.getItem('radio-volume');
-    if (savedVolume !== null) {
-        radioAudio.volume = parseFloat(savedVolume);
-        volumeSlider.val(savedVolume);
-    } else {
-        radioAudio.volume = 0.8;
-        volumeSlider.val(0.8);
+        stopMetadataPolling();
+        releaseWakeLock();
+        updateMediaPlaybackState('paused');
+        updatePlayerUI();
     }
 
-    volumeSlider.on('input', function() {
-        const val = $(this).val();
-        radioAudio.volume = val;
-        localStorage.setItem('radio-volume', val);
+    $(document).on('click', '.js-toggle-play', function () {
+        if (isPlayingState) {
+            stopPlayback();
+        } else {
+            startPlayback();
+        }
     });
 
     // Reanudar la radio si la pestaña estuvo suspendida en segundo plano y el audio se detuvo
-    $(document).on('visibilitychange', function() {
+    $(document).on('visibilitychange', function () {
         if (document.visibilityState === 'visible') {
             if (isPlayingState) {
                 requestWakeLock(); // Volver a solicitar wake lock al regresar al primer plano
@@ -660,7 +749,7 @@ $(document).ready(function () {
     // --- Detección de Transmisión en Vivo en YouTube ---
     const YOUTUBE_CHANNEL_ID = 'UCdtFAwglkI3zvibkt8YHiZw'; // ID de canal de YouTube
     const YOUTUBE_API_KEY = 'AIzaSyCKVAT0CX0Oj6He8CCEIDzsdenEHI1yn9E';       // API Key de Google Developer
-    const ytLiveBtn = $('#ytLiveBtn');
+    const ytLiveBtn = $('.js-yt-live');
 
     // Lista de subidas del canal (mismo ID cambiando el prefijo "UC" por "UU")
     const YOUTUBE_UPLOADS_PLAYLIST = 'UU' + YOUTUBE_CHANNEL_ID.slice(2);
@@ -671,7 +760,7 @@ $(document).ready(function () {
     // search.list (100 unidades), para no agotar la cuota diaria de 10.000 unidades.
     async function checkYouTubeLive() {
         if (!YOUTUBE_CHANNEL_ID || !YOUTUBE_API_KEY || YOUTUBE_CHANNEL_ID.startsWith('YOUR_') || YOUTUBE_API_KEY.startsWith('YOUR_')) {
-            ytLiveBtn.hide();
+            ytLiveBtn.prop('hidden', true);
             return;
         }
         if (!navigator.onLine) return;
@@ -686,7 +775,7 @@ $(document).ready(function () {
             const videoIds = (playlistData.items || []).map(item => item.contentDetails.videoId);
 
             if (videoIds.length === 0) {
-                ytLiveBtn.hide();
+                ytLiveBtn.prop('hidden', true);
                 return;
             }
 
@@ -698,13 +787,13 @@ $(document).ready(function () {
             if (liveVideo) {
                 // Enlazar al video en vivo actual
                 ytLiveBtn.attr('href', `https://www.youtube.com/watch?v=${liveVideo.id}`);
-                ytLiveBtn.css('display', 'inline-flex');
+                ytLiveBtn.prop('hidden', false);
             } else {
-                ytLiveBtn.hide();
+                ytLiveBtn.prop('hidden', true);
             }
         } catch (error) {
             console.error('Error al verificar la transmisión en vivo de YouTube:', error);
-            ytLiveBtn.hide();
+            ytLiveBtn.prop('hidden', true);
         }
     }
 
@@ -723,64 +812,199 @@ $(document).ready(function () {
         }
     });
 
-    // --- Lógica de los Carruseles ---
-    $('.carousel-btn').on('click', function() {
-        const carouselId = $(this).data('carousel');
-        const track = $(`#${carouselId}`);
-        const direction = $(this).hasClass('next') ? 1 : -1;
-        const scrollAmount = track.width() * 0.8;
+    // --- Programación semanal de la radio (portada en escritorio, "Más" en móvil) ---
+    // dow: 0 = domingo ... 6 = sábado. Solo la hora de inicio de cada programa.
+    const PROGRAMACION = [
+        { dow: 1, time: '19:00', name: 'Rescatando tu valor' },
+        { dow: 3, time: '19:00', name: 'Restaurando vidas' },
+        { dow: 4, time: '19:00', name: 'Psicología y Fe' },
+        { dow: 4, time: '20:00', name: 'Cautivadas por su Gracia' },
+        { dow: 6, time: '11:00', name: 'Cristo nos une' },
+        { dow: 6, time: '15:00', name: 'Generación con Propósito' },
+        { dow: 6, time: '16:00', name: 'Jesús es la Única Esperanza' },
+        { dow: 6, time: '20:00', name: 'Mi Testimonio' },
+        { dow: 0, time: '18:00', name: 'Evangelizando con los Soldados de Cristo' },
+        { dow: 0, time: '19:00', name: 'Unidos en Cristo' }
+    ];
+    const WEEK_ORDER = [1, 2, 3, 4, 5, 6, 0]; // la semana empieza el lunes
+    const WEEK_DAY_NAMES = ['Domingo', 'Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado'];
 
-        // Añadir una pequeña animación de escala a los elementos visibles
-        track.find('> *').css('transform', 'scale(0.98)');
-        
-        track.animate({
-            scrollLeft: track.scrollLeft() + (scrollAmount * direction)
-        }, 400, function() {
-            // Restaurar escala después de la animación
-            track.find('> *').css('transform', 'scale(1)');
+    $('.js-schedule').each(function () {
+        const $sched = $(this);
+        WEEK_ORDER.forEach(dow => {
+            const programs = PROGRAMACION.map((p, i) => ({ ...p, i })).filter(p => p.dow === dow);
+            if (programs.length === 0) return;
+            const $slots = $('<div class="sched-slots"></div>');
+            programs.forEach(p => {
+                $('<div class="sched-slot"></div>').attr('data-index', p.i).append(
+                    $('<span class="sched-time"></span>').text(p.time),
+                    $('<span class="sched-text"></span>').append(
+                        $('<span class="sched-name"></span>').text(p.name),
+                        $('<span class="sched-tag" hidden>PRÓXIMO</span>')
+                    )
+                ).appendTo($slots);
+            });
+            $('<div class="sched-day"></div>').attr('data-dow', dow).append(
+                $('<div class="sched-day-name"></div>').text(WEEK_DAY_NAMES[dow]),
+                $slots
+            ).appendTo($sched);
         });
     });
 
-    // --- Lógica del Tema (Modo Claro / Oscuro) ---
-    const themeToggleBtn = $('#themeToggle');
-    const currentTheme = localStorage.getItem('theme') || 'light';
+    // Destaca el día de hoy y el próximo programa en comenzar
+    function highlightSchedule() {
+        const now = new Date();
+        const nowMin = now.getDay() * 1440 + now.getHours() * 60 + now.getMinutes();
+        const WEEK = 7 * 1440;
+        let nextIndex = -1;
+        let nextDelta = Infinity;
 
-    function setTheme(theme) {
-        if (theme === 'dark') {
-            $('html').attr('data-theme', 'dark');
-            themeToggleBtn.find('.theme-switch-knob').text('🌙');
-            localStorage.setItem('theme', 'dark');
-        } else {
-            $('html').attr('data-theme', 'light');
-            themeToggleBtn.find('.theme-switch-knob').text('☀️');
-            localStorage.setItem('theme', 'light');
+        PROGRAMACION.forEach((p, i) => {
+            const [h, m] = p.time.split(':').map(Number);
+            const delta = (p.dow * 1440 + h * 60 + m - nowMin + WEEK) % WEEK;
+            if (delta > 0 && delta < nextDelta) {
+                nextDelta = delta;
+                nextIndex = i;
+            }
+        });
+
+        $('.js-schedule .sched-day').each(function () {
+            $(this).toggleClass('is-today', Number(this.dataset.dow) === now.getDay());
+        });
+        $('.js-schedule .sched-slot').each(function () {
+            const isNext = Number(this.dataset.index) === nextIndex;
+            $(this).toggleClass('is-next', isNext).find('.sched-tag').prop('hidden', !isNext);
+        });
+
+        // Chip "Luego" en la portada móvil
+        if (nextIndex >= 0) {
+            const next = PROGRAMACION[nextIndex];
+            const isToday = next.dow === now.getDay();
+            const when = isToday ? next.time : `${WEEK_DAY_NAMES[next.dow]} ${next.time}`;
+            $('.js-next-program').text(`${next.name} · ${when}`);
+            $('.js-next-chip').prop('hidden', false);
         }
     }
 
-    // Inicializar tema
-    setTheme(currentTheme);
+    highlightSchedule();
+    setInterval(highlightSchedule, 60000);
 
-    themeToggleBtn.on('click', function() {
-        const newTheme = $('html').attr('data-theme') === 'dark' ? 'light' : 'dark';
-        setTheme(newTheme);
+    // Compartir la imagen de la programación (póster para redes)
+    const SCHEDULE_IMAGE = '/images/programacion-semanal.png';
+
+    $('.js-share-schedule').on('click', async function () {
+        try {
+            const blob = await (await fetch(SCHEDULE_IMAGE)).blob();
+            const file = new File([blob], 'programacion-radio-bendicion.png', { type: 'image/png' });
+            if (navigator.canShare && navigator.canShare({ files: [file] })) {
+                await navigator.share({
+                    files: [file],
+                    title: 'Programación semanal · Radio Bendición',
+                    text: 'Programación semanal de Radio Bendición. Escúchanos en radiobendicion.cl'
+                });
+                return;
+            }
+        } catch (err) {
+            if (err && err.name === 'AbortError') return; // el usuario cerró el menú de compartir
+            console.warn('No se pudo compartir la imagen:', err);
+        }
+        // Respaldo: descargar la imagen
+        const link = document.createElement('a');
+        link.href = SCHEDULE_IMAGE;
+        link.download = 'programacion-radio-bendicion.png';
+        document.body.appendChild(link);
+        link.click();
+        link.remove();
+        showToast('Descargamos la imagen de la programación para que la compartas.');
     });
 
-    // --- Lógica de Compartir Señal ---
-    const shareAppBtn = $('#shareAppBtn');
+    // --- Reuniones de la iglesia (portada en escritorio, "Más" en móvil) ---
+    const DAY_NAMES = ['Domingo', 'Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado'];
+    const MEETINGS = [
+        { dow: 2, time: '19:00', name: 'Reunión de mujeres' },
+        { dow: 5, time: '19:30', name: 'Culto general' },
+        { dow: 6, time: '16:00', name: 'Escuela Dominical' },
+        { dow: 6, time: '18:00', name: 'Reunión de jóvenes' },
+        { dow: 0, time: '10:30', name: 'Culto general' }
+    ];
+    const MEETING_LENGTH_MIN = 120; // una reunión se considera "en curso" durante 2 horas
 
-    // Función toast de notificación
-    function showToast(message) {
-        $('.custom-toast').remove();
-        const toast = $('<div class="custom-toast">' + message + '</div>');
-        $('body').append(toast);
-        setTimeout(() => toast.addClass('show'), 50);
-        setTimeout(() => {
-            toast.removeClass('show');
-            setTimeout(() => toast.remove(), 400);
-        }, 3000);
+    $('.js-meetings').each(function () {
+        const $list = $(this);
+        MEETINGS.forEach((meeting, i) => {
+            $('<article class="pill"></article>').attr('data-index', i).append(
+                $('<span class="pill-dot"></span>').text(meeting.time),
+                $('<span class="pill-text"></span>').append(
+                    $('<span class="pill-name"></span>').text(meeting.name),
+                    $('<span class="pill-sub"></span>')
+                )
+            ).appendTo($list);
+        });
+    });
+
+    function highlightNextMeeting() {
+        const now = new Date();
+        const nowMin = now.getDay() * 1440 + now.getHours() * 60 + now.getMinutes();
+        const WEEK = 7 * 1440;
+        let bestIndex = -1;
+        let bestDelta = Infinity;
+
+        MEETINGS.forEach((meeting, i) => {
+            const [h, m] = meeting.time.split(':').map(Number);
+            const start = meeting.dow * 1440 + h * 60 + m;
+            // Minutos hasta el próximo inicio; negativo pequeño = en curso
+            let delta = (start - nowMin + WEEK) % WEEK;
+            if (delta > WEEK - MEETING_LENGTH_MIN) delta -= WEEK;
+            if (delta < bestDelta) {
+                bestDelta = delta;
+                bestIndex = i;
+            }
+        });
+
+        $('.js-meetings .pill').each(function () {
+            const i = Number(this.dataset.index);
+            const meeting = MEETINGS[i];
+            const when = meeting.dow === now.getDay() ? 'Hoy' : DAY_NAMES[meeting.dow];
+            let sub = when;
+            if (i === bestIndex) {
+                sub = bestDelta <= 0 ? 'En curso ahora' : `Próxima · ${when}`;
+            }
+            $(this).toggleClass('is-next', i === bestIndex).find('.pill-sub').text(sub);
+        });
+
     }
 
-    // Copiar texto al portapapeles (API moderna con respaldo para navegadores antiguos)
+    highlightNextMeeting();
+    setInterval(highlightNextMeeting, 60000);
+
+    // --- Portada móvil: ubicar el monte con la cruz en el espacio libre sobre el reproductor ---
+    const heroBg = document.querySelector('.hero-bg');
+    const mobilePlayer = document.querySelector('.m-player');
+    const desktopQuery = window.matchMedia('(min-width: 820px)');
+
+    function layoutMobileArt() {
+        if (desktopQuery.matches || currentView !== 'radio' || !mobilePlayer) return;
+        const vw = window.innerWidth || 390;
+        const vh = (window.visualViewport && window.visualViewport.height) || window.innerHeight || 800;
+        const headerBottom = 76;
+        const blockTop = mobilePlayer.getBoundingClientRect().top + 4 || vh * 0.6;
+        const free = Math.max(40, blockTop - headerBottom);
+        const base = Math.min(vw, 520);
+        const k = Math.min(2.4, Math.max(0.5, (0.42 * free) / (base / 6)));
+        const artW = base * k;
+        const artH = artW * 0.75;
+        // La cruz queda a un tercio del ancho y centrada en el espacio libre
+        // (0.597 = posición vertical de la cruz dentro del dibujo)
+        heroBg.style.setProperty('--art-w', artW + 'px');
+        heroBg.style.setProperty('--art-left', (vw * 0.33 - 0.33 * artW) + 'px');
+        heroBg.style.setProperty('--art-top', (headerBottom + free / 2 - 0.597 * artH) + 'px');
+    }
+
+    window.addEventListener('resize', layoutMobileArt);
+    if (window.visualViewport) window.visualViewport.addEventListener('resize', layoutMobileArt);
+    if (document.fonts && document.fonts.ready) document.fonts.ready.then(layoutMobileArt);
+
+    // --- Copiar texto al portapapeles (API moderna con respaldo para navegadores antiguos) ---
     function copyToClipboard(text) {
         if (navigator.clipboard && window.isSecureContext) {
             return navigator.clipboard.writeText(text);
@@ -788,6 +1012,8 @@ $(document).ready(function () {
         return new Promise((resolve, reject) => {
             const dummy = document.createElement('textarea');
             dummy.value = text;
+            dummy.style.position = 'fixed';
+            dummy.style.opacity = '0';
             document.body.appendChild(dummy);
             dummy.select();
             const ok = document.execCommand('copy');
@@ -796,10 +1022,11 @@ $(document).ready(function () {
         });
     }
 
-    shareAppBtn.on('click', function() {
+    // --- Lógica de Compartir Señal ---
+    $('.js-share').on('click', function () {
         const shareData = {
             title: 'Radio Bendición',
-            text: '🎙️ ¡Escucha en vivo Radio Bendición - Iglesia Toda la Gloria para Dios! 📻✨',
+            text: 'Escucha Radio Bendición en vivo: música y Palabra las 24 horas.',
             url: window.location.origin || window.location.href
         };
 
@@ -810,147 +1037,145 @@ $(document).ready(function () {
         } else {
             // Fallback: copiar al portapapeles
             copyToClipboard(shareData.text + ' ' + shareData.url)
-                .then(() => showToast('📋 ¡Mensaje y enlace copiados para compartir!'))
-                .catch(() => showToast('⚠️ No se pudo copiar el enlace.'));
+                .then(() => showToast('Enlace copiado. ¡Compártelo!'))
+                .catch(() => showToast('No se pudo copiar el enlace.'));
         }
     });
 
     // --- Lógica de Peticiones de Oración ---
-    const prayerModal = $('#prayerModal');
-    const openPrayerBtn = $('#prayerBtn');
-    const openPrayerBtnCta = $('#prayerBtnCta');
-    const closePrayerBtn = $('#closePrayerModalBtn');
-    const prayerForm = $('#prayerForm');
+    const WHATSAPP_NUMBER = '56957906866';
+    const $prayerForm = $('#prayerForm');
+    const $prayerName = $('#prayerName');
+    const $prayerDetails = $('#prayerDetails');
+    const $prayerAire = $('#prayerAire');
+    const $prayerError = $('#prayerError');
+    const $prayerPreview = $('#prayerPreview');
 
-    // Reemplazar con el número de teléfono oficial de la iglesia
-    const WHATSAPP_NUMBER = '56957906866'; 
-
-    function openPrayerModal() {
-        prayerModal.addClass('open');
+    function buildPrayerText() {
+        const name = $prayerName.val().trim();
+        const motivo = $prayerForm.find('input[name="motivo"]:checked').val();
+        const details = $prayerDetails.val().trim();
+        return `*Petición de Oración - Radio Bendición*\n` +
+            (name ? `*Nombre:* ${name}\n` : '') +
+            `*Motivo:* ${motivo}\n\n` +
+            `${details}\n\n` +
+            ($prayerAire.is(':checked') ? 'Pueden mencionarla al aire.' : 'Prefiero que sea privada.');
     }
 
-    function closePrayerModal() {
-        prayerModal.removeClass('open');
-        prayerForm[0].reset();
+    function updatePrayerPreview() {
+        $prayerPreview.text($prayerDetails.val().trim()
+            ? buildPrayerText().replace(/\*/g, '')
+            : 'Tu petición aparecerá aquí mientras escribes.');
     }
 
-    openPrayerBtn.on('click', openPrayerModal);
-    openPrayerBtnCta.on('click', openPrayerModal);
-    closePrayerBtn.on('click', closePrayerModal);
-
-    // Cerrar al hacer clic en el backdrop
-    prayerModal.on('click', function(e) {
-        if ($(e.target).is(prayerModal)) {
-            closePrayerModal();
-        }
-    });
+    $prayerForm.on('input change', updatePrayerPreview);
+    $prayerDetails.on('input', () => $prayerError.prop('hidden', true));
 
     // Envío del formulario a WhatsApp
-    prayerForm.on('submit', function(e) {
+    $prayerForm.on('submit', function (e) {
         e.preventDefault();
 
-        const name = $('#prayerName').val().trim();
-        const category = $('#prayerCategory').val();
-        const details = $('#prayerDetails').val().trim();
+        if ($prayerDetails.val().trim().length < 5) {
+            $prayerError.prop('hidden', false);
+            $prayerDetails.trigger('focus');
+            return;
+        }
 
-        if (!name || !category || !details) return;
-
-        // Construir mensaje de WhatsApp
-        const waText = 
-            `*Petición de Oración - Radio Bendición*\n\n` +
-            `*Nombre:* ${name}\n` +
-            `*Categoría:* ${category}\n` +
-            `*Detalle:* ${details}`;
-
-        const encodedText = encodeURIComponent(waText);
-        const waUrl = `https://wa.me/${WHATSAPP_NUMBER}?text=${encodedText}`;
-
-        // Abrir link en nueva pestaña
+        const waUrl = `https://wa.me/${WHATSAPP_NUMBER}?text=${encodeURIComponent(buildPrayerText())}`;
         window.open(waUrl, '_blank');
-        
-        // Cerrar modal y limpiar
-        closePrayerModal();
-        showToast('🙏 ¡Petición enviada! Abriendo WhatsApp...');
+        showToast('Abrimos WhatsApp con tu petición. Estaremos orando por ti.');
     });
 
     // --- Lógica del Devocional Diario ---
-    const devotionalDate = $('#devotionalDate');
-    const devotionalTitle = $('#devotionalTitle');
-    const devotionalVerseText = $('#devotionalVerseText');
-    const devotionalVerseCite = $('#devotionalVerseCite');
-    const devotionalReflection = $('#devotionalReflection');
-    const devotionalPrayer = $('#devotionalPrayer');
-    const devotionalNotifyBtn = $('#devotionalNotifyBtn');
+    const MESES = ['enero', 'febrero', 'marzo', 'abril', 'mayo', 'junio', 'julio', 'agosto', 'septiembre', 'octubre', 'noviembre', 'diciembre'];
+    const $dayStrip = $('#dayStrip');
+    const $devArticle = $('#devArticle');
+    const todayNum = new Date().getDate(); // 1 al 31
+    let selectedDay = todayNum;
 
-    function loadDailyDevotional() {
+    // Botones de los 31 días
+    for (let n = 1; n <= 31; n++) {
+        $('<button type="button" class="day"></button>')
+            .text(n)
+            .attr({ 'data-day': n, 'aria-label': `Día ${n}`, 'aria-pressed': 'false' })
+            .toggleClass('is-today', n === todayNum)
+            .appendTo($dayStrip);
+    }
+
+    $dayStrip.on('click', '.day', function () {
+        renderDevotional(Number(this.dataset.day));
+        centerSelectedDay();
+    });
+
+    // En móvil la tira de días se desplaza: centrar el día elegido
+    function centerSelectedDay() {
+        const strip = $dayStrip[0];
+        const btn = strip.querySelector(`[data-day="${selectedDay}"]`);
+        if (!btn || strip.scrollWidth <= strip.clientWidth) return;
+        strip.scrollTo({ left: btn.offsetLeft - strip.clientWidth / 2 + btn.offsetWidth / 2, behavior: 'smooth' });
+    }
+
+    function devotionalDateLabel(day) {
+        const now = new Date();
+        if (day === todayNum) return `Hoy, ${day} de ${MESES[now.getMonth()]}`;
+        const daysInMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0).getDate();
+        return day <= daysInMonth ? `${day} de ${MESES[now.getMonth()]}` : `Día ${day}`;
+    }
+
+    function devotionalShareText(d, day) {
+        return `*Radio Bendición - Devocional del día ${day}*\n` +
+            `*${d.titulo}*\n\n` +
+            `_"${d.pasaje}"_ (${d.cita})\n\n` +
+            `*Reflexión:* ${d.reflexion}\n\n` +
+            `*Oración:* ${d.oracion}\n\n` +
+            `Escucha la señal en vivo en: ${window.location.origin || 'https://radiobendicion.cl'}`;
+    }
+
+    function renderDevotional(day) {
         if (typeof DEVOTIONALS_DB === 'undefined') {
             console.warn('Base de datos de devocionales no cargada.');
             return;
         }
+        const d = DEVOTIONALS_DB[day];
+        if (!d) return;
+        selectedDay = day;
 
-        const now = new Date();
-        const day = now.getDate(); // 1 al 31
+        $dayStrip.find('.day').attr('aria-pressed', 'false');
+        $dayStrip.find(`[data-day="${day}"]`).attr('aria-pressed', 'true');
 
-        // Obtener devocional correspondiente al día
-        const devotional = DEVOTIONALS_DB[day];
-        if (!devotional) return;
+        $('#devLabel').text(devotionalDateLabel(day));
+        $('#devDayNum').text(day);
+        $('#devotionalTitle').text(d.titulo);
+        $('#devotionalVerseText').text(`“${d.pasaje}”`);
+        $('#devotionalVerseCite').text(d.cita);
+        $('#devotionalReflection').text(d.reflexion);
+        $('#devotionalPrayer').text(d.oracion);
 
-        // Formatear fecha en español
-        const opciones = { weekday: 'long', day: 'numeric', month: 'long' };
-        let fechaFormateada = now.toLocaleDateString('es-ES', opciones);
-        // Capitalizar primera letra
-        fechaFormateada = fechaFormateada.charAt(0).toUpperCase() + fechaFormateada.slice(1);
-
-        // Cargar en el DOM
-        devotionalDate.text(fechaFormateada);
-        devotionalTitle.text(devotional.titulo);
-        devotionalVerseText.text(`"${devotional.pasaje}"`);
-        devotionalVerseCite.text(devotional.cita);
-        devotionalReflection.text(devotional.reflexion);
-        devotionalPrayer.text(devotional.oracion);
-
-        // Configurar botones de compartir y copiar
-        $('#shareDevotionalWs').off('click').on('click', function() {
-            const waText = 
-                `*Radio Bendición - Devocional Diario*\n` +
-                `🕯️ *${devotional.titulo}*\n\n` +
-                `_"${devotional.pasaje}"_ (${devotional.cita})\n\n` +
-                `📖 *Reflexión:* ${devotional.reflexion}\n\n` +
-                `🙏 *Oración:* ${devotional.oracion}\n\n` +
-                `🎙️ Escucha la señal en vivo en: ${window.location.origin || 'https://radiobendicion.cl'}`;
-            
-            const encodedText = encodeURIComponent(waText);
-            const waUrl = `https://wa.me/?text=${encodedText}`;
-            window.open(waUrl, '_blank');
-        });
-
-        $('#copyDevotionalBtn').off('click').on('click', function() {
-            const copyText = 
-                `Radio Bendición - Devocional Diario\n` +
-                `🕯️ ${devotional.titulo}\n\n` +
-                `"${devotional.pasaje}" (${devotional.cita})\n\n` +
-                `Reflexión: ${devotional.reflexion}\n\n` +
-                `Oración: ${devotional.oracion}\n\n` +
-                `Escucha la señal en vivo en: ${window.location.origin || 'https://radiobendicion.cl'}`;
-            
-            copyToClipboard(copyText)
-                .then(() => showToast('📋 ¡Devocional copiado al portapapeles!'))
-                .catch(() => showToast('⚠️ No se pudo copiar el devocional.'));
-        });
+        $devArticle.removeClass('is-changing');
+        void $devArticle[0].offsetWidth;
+        $devArticle.addClass('is-changing');
     }
 
-    // Inicializar carga del devocional
-    loadDailyDevotional();
+    $('#shareDevotionalWs').on('click', function () {
+        const text = devotionalShareText(DEVOTIONALS_DB[selectedDay], selectedDay);
+        window.open(`https://wa.me/?text=${encodeURIComponent(text)}`, '_blank');
+    });
 
-    // Notificaciones de Devocionales (Push & Local Fallbacks)
+    $('#copyDevotionalBtn').on('click', function () {
+        const text = devotionalShareText(DEVOTIONALS_DB[selectedDay], selectedDay).replace(/[*_]/g, '');
+        copyToClipboard(text)
+            .then(() => showToast('Devocional copiado.'))
+            .catch(() => showToast('No se pudo copiar el devocional.'));
+    });
+
+    renderDevotional(todayNum);
+
+    // --- Notificaciones de Devocionales ---
+    const devotionalNotifyBtn = $('#devotionalNotifyBtn');
+
     function updateNotifyBtnUI(subscribed) {
-        if (subscribed) {
-            devotionalNotifyBtn.addClass('active');
-            devotionalNotifyBtn.html('<span class="bell-icon">🔔</span> <span class="btn-text">Avisos Activos</span>');
-        } else {
-            devotionalNotifyBtn.removeClass('active');
-            devotionalNotifyBtn.html('<span class="bell-icon">🔔</span> <span class="btn-text">Recibir Avisos</span>');
-        }
+        devotionalNotifyBtn.attr('aria-pressed', subscribed ? 'true' : 'false');
+        $('#notifyLabel').text(subscribed ? 'Avisos activos' : 'Recibir avisos');
     }
 
     // Los avisos diarios usan Periodic Background Sync: el Service Worker se despierta
@@ -991,18 +1216,18 @@ $(document).ready(function () {
     async function activateDailyNotifications() {
         const registered = await registerDailySync();
         if (!registered) {
-            localStorage.setItem('devotional-notifications', 'unsubscribed');
+            storageSet('devotional-notifications', 'unsubscribed');
             updateNotifyBtnUI(false);
-            showToast('ℹ️ Los avisos diarios requieren la app instalada en Android. Abre la app para leer el devocional del día.');
+            showToast('Los avisos diarios requieren la app instalada en Android. Abre la app para leer el devocional del día.', null, 6000);
             return;
         }
-        localStorage.setItem('devotional-notifications', 'subscribed');
+        storageSet('devotional-notifications', 'subscribed');
         updateNotifyBtnUI(true);
         sendWelcomeNotification();
     }
 
     // Verificar preferencia previa
-    const isSubscribed = localStorage.getItem('devotional-notifications') === 'subscribed';
+    const isSubscribed = storageGet('devotional-notifications') === 'subscribed';
     const notificationsActive = isSubscribed && supportsNotifications && Notification.permission === 'granted';
     updateNotifyBtnUI(notificationsActive);
     if (notificationsActive) {
@@ -1010,20 +1235,19 @@ $(document).ready(function () {
         registerDailySync();
     }
 
-    devotionalNotifyBtn.on('click', function() {
+    devotionalNotifyBtn.on('click', function () {
         if (!supportsNotifications) {
-            showToast('ℹ️ Tu navegador no soporta notificaciones. Abre la app para leer el devocional del día.');
+            showToast('Tu navegador no permite notificaciones. Abre la app para leer el devocional del día.', null, 5000);
             return;
         }
 
         if (Notification.permission === 'granted') {
             // Ya está concedido, alternar estado
-            const currentlyActive = devotionalNotifyBtn.hasClass('active');
-            if (currentlyActive) {
-                localStorage.setItem('devotional-notifications', 'unsubscribed');
+            if (devotionalNotifyBtn.attr('aria-pressed') === 'true') {
+                storageSet('devotional-notifications', 'unsubscribed');
                 unregisterDailySync();
                 updateNotifyBtnUI(false);
-                showToast('🔕 Notificaciones desactivadas.');
+                showToast('Avisos desactivados.');
             } else {
                 activateDailyNotifications();
             }
@@ -1032,22 +1256,22 @@ $(document).ready(function () {
                 if (permission === 'granted') {
                     activateDailyNotifications();
                 } else {
-                    showToast('❌ Permiso de notificaciones denegado.');
+                    showToast('Permiso de notificaciones denegado.');
                 }
             });
         } else {
-            showToast('⚠️ Permiso denegado. Actívalas en los ajustes del navegador.');
+            showToast('Las notificaciones están bloqueadas. Actívalas en los ajustes del navegador.', null, 5000);
         }
     });
 
     function sendWelcomeNotification() {
-        const title = "🔔 ¡Notificaciones Activadas!";
+        const title = "¡Avisos activados!";
         const options = {
             body: "Recibirás un aviso diario de Radio Bendición con el devocional del día.",
             icon: "images/logo-192.png",
             badge: "images/logo-192.png",
             vibrate: [100, 50, 100],
-            data: { url: window.location.origin + '#devocional' }
+            data: { url: window.location.origin + '/#devocional' }
         };
 
         if ('serviceWorker' in navigator && navigator.serviceWorker.controller) {
@@ -1063,191 +1287,25 @@ $(document).ready(function () {
         }
     }
 
-    // --- Lógica del Carrusel de Fondos del Reproductor ---
-    let currentBgIndex = 0;
-    const bgLayer1 = $('#playerBg1');
-    const bgLayer2 = $('#playerBg2');
-    let activeLayer = 1;
-
-    function rotatePlayerBackground() {
-        const nextBgIndex = (currentBgIndex + 1) % 4; // Tenemos 4 imágenes (bg-0 a bg-3)
-
-        if (activeLayer === 1) {
-            // Cargar la siguiente clase en la capa 2 (que está oculta) y mostrarla
-            if (bgLayer2.length) {
-                bgLayer2.removeClass('bg-0 bg-1 bg-2 bg-3').addClass(`bg-${nextBgIndex}`);
-                bgLayer2.css('opacity', '1');
-            }
-            if (bgLayer1.length) {
-                bgLayer1.css('opacity', '0');
-            }
-            activeLayer = 2;
-        } else {
-            // Cargar la siguiente clase en la capa 1 (que está oculta) y mostrarla
-            if (bgLayer1.length) {
-                bgLayer1.removeClass('bg-0 bg-1 bg-2 bg-3').addClass(`bg-${nextBgIndex}`);
-                bgLayer1.css('opacity', '1');
-            }
-            if (bgLayer2.length) {
-                bgLayer2.css('opacity', '0');
-            }
-            activeLayer = 1;
-        }
-        currentBgIndex = nextBgIndex;
-    }
-
-    if (bgLayer1.length && bgLayer2.length) {
-        // Rotar cada 6 segundos
-        setInterval(rotatePlayerBackground, 6000);
-    }
-
-    // --- Lógica de navegación entre Vistas (Radio vs Iglesia) ---
-    const menuLinks = $('#menu a');
-
-    function updateActiveMenuLink(targetHref) {
-        $('#menu a').removeClass('active');
-        
-        if (targetHref === '#inicio' || targetHref === '#radio') {
-            $('#menu a[href="#inicio"]').addClass('active');
-        } else {
-            const link = $('#menu a[href="' + targetHref + '"]');
-            if (link.length) {
-                link.addClass('active');
-            } else {
-                $('#menu a[href="#iglesia"]').addClass('active');
-            }
-        }
-    }
-
-    function checkHashView() {
-        const hash = window.location.hash || '#inicio';
-        const isChurch = ['#iglesia', '#devocional', '#horarios', '#nosotros', '#vision', '#ministerios', '#creemos', '#contacto'].some(section => hash.startsWith(section));
-        
-        if (isChurch) {
-            $('body').removeClass('view-radio view-admin').addClass('view-church');
-            updateActiveMenuLink(hash);
-        } else if (hash === '#inicio' || hash === '#radio') {
-            $('body').removeClass('view-church view-admin').addClass('view-radio');
-            updateActiveMenuLink('#inicio');
-        }
-    }
-
-    // Inicializar vista por defecto
-    checkHashView();
-
-    function safeScrollTo(targetHref) {
-        const targetElement = $(targetHref);
-        if (targetElement.length) {
-            // Breve espera de 30ms para permitir reflow del DOM tras cambio de clase.
-            // Esto es imperceptible y asegura cálculos de offset exactos.
-            setTimeout(() => {
-                const headerHeight = $('header').outerHeight() || 80;
-                const elementPosition = targetElement.offset().top;
-                const offsetPosition = elementPosition - headerHeight;
-
-                window.scrollTo({
-                    top: offsetPosition,
-                    behavior: 'smooth'
-                });
-            }, 30);
-        }
-    }
-
-    function navigateToHash(targetHref) {
-        if (!targetHref || !targetHref.startsWith('#')) return;
-
-        // 1. Cambiar la vista inmediatamente
-        const isChurch = ['#iglesia', '#devocional', '#horarios', '#nosotros', '#vision', '#ministerios', '#creemos', '#contacto'].some(section => targetHref.startsWith(section));
-        if (isChurch) {
-            $('body').removeClass('view-radio').addClass('view-church');
-        } else if (targetHref === '#inicio' || targetHref === '#radio') {
-            $('body').removeClass('view-church').addClass('view-radio');
-        }
-
-        // 2. Actualizar el link activo
-        updateActiveMenuLink(targetHref);
-
-        // 3. Cerrar el menú móvil si está abierto
-        menu.removeClass('open');
-        menuBtn.text('☰');
-
-        // 4. Realizar el scroll preciso
-        if (targetHref === '#inicio' || targetHref === '#iglesia' || targetHref === '#radio') {
-            window.scrollTo({ top: 0, behavior: 'smooth' });
-            history.pushState(null, null, targetHref);
-        } else {
-            safeScrollTo(targetHref);
-            history.pushState(null, null, targetHref);
-        }
-    }
-
-    // Evento click unificado para todos los enlaces hash (menú y cuerpo de la página)
-    $(document).on('click', 'a[href^="#"]', function(e) {
-        const targetHref = $(this).attr('href');
-        // Excluir el enlace de YouTube u otros enlaces con hash vacío/genérico (#)
-        if (targetHref && targetHref.length > 1) {
-            e.preventDefault();
-            navigateToHash(targetHref);
-        }
+    // --- Accesos directos dentro de la vista App ---
+    $('[data-action="play"]').on('click', function () {
+        if (!isPlayingState) startPlayback();
     });
-
-    // Evento hashchange para navegación con botones atrás/adelante del navegador
-    $(window).on('hashchange', function() {
-        checkHashView();
-        const hash = window.location.hash;
-        if (hash && hash !== '#inicio' && hash !== '#iglesia' && hash !== '#radio') {
-            safeScrollTo(hash);
-        } else {
-            window.scrollTo({ top: 0, behavior: 'smooth' });
-        }
+    $('[data-action="today"]').on('click', function () {
+        renderDevotional(todayNum);
     });
-
-    // Scroll inicial si se ingresa con hash en la URL
-    const initialHash = window.location.hash;
-    if (initialHash && initialHash !== '#inicio' && initialHash !== '#iglesia' && initialHash !== '#radio') {
-        safeScrollTo(initialHash);
-    }
-
-    // --- Lógica del Modal de Redes y Contacto ---
-    const socialModal = $('#socialModal');
-    const openSocialBtn = $('#openSocialModalBtn');
-    const closeSocialBtn = $('#closeSocialModalBtn');
-    const prayerBtnModal = $('#prayerBtnModal');
-
-    function openSocialModal() {
-        socialModal.addClass('open');
-    }
-
-    function closeSocialModal() {
-        socialModal.removeClass('open');
-    }
-
-    openSocialBtn.on('click', openSocialModal);
-    closeSocialBtn.on('click', closeSocialModal);
-
-    // Cerrar al hacer clic en el backdrop
-    socialModal.on('click', function(e) {
-        if ($(e.target).is(socialModal)) {
-            closeSocialModal();
-        }
-    });
-
-    // Enlace interno del modal: Abrir formulario de oración
-    prayerBtnModal.on('click', function() {
-        closeSocialModal();
-        setTimeout(() => {
-            openPrayerModal();
-        }, 300);
+    $('[data-action="pray"]').on('click', function () {
+        setTimeout(() => $prayerDetails.trigger('focus'), 60);
     });
 
     // --- Detección de Estado de Conexión (Online/Offline) ---
     function updateConnectionStatus() {
         if (navigator.onLine) {
-            if ($('body').hasClass('is-offline')) {
-                $('body').removeClass('is-offline');
-                showToast('🟢 ¡Conexión restablecida! Reestableciendo señal...');
+            if ($body.hasClass('is-offline')) {
+                $body.removeClass('is-offline');
+                showToast('Conexión recuperada. Volvemos al aire.');
                 updateNowPlaying();
-                
+
                 // Si el usuario estaba escuchando antes de perder la conexión, intentar reconectar automáticamente
                 if (isPlayingState) {
                     attemptReconnect();
@@ -1256,15 +1314,15 @@ $(document).ready(function () {
                 }
             }
         } else {
-            $('body').addClass('is-offline');
-            showToast('⚠️ Sin conexión a internet. Modo sin conexión activo.');
-            
+            $body.addClass('is-offline');
+            showToast('Sin conexión a internet. Modo sin conexión activo.');
+
             // Si hay un temporizador de reconexión activo, cancelarlo temporalmente
             if (reconnectTimeout) {
                 clearTimeout(reconnectTimeout);
                 reconnectTimeout = null;
             }
-            
+
             // Pausar la reproducción físicamente en el elemento de audio
             radioAudio.pause();
             isBuffering = false;
@@ -1279,29 +1337,37 @@ $(document).ready(function () {
 
     // Verificación inicial al cargar la página
     if (!navigator.onLine) {
-        $('body').addClass('is-offline');
-        updatePlayerUI();
+        $body.addClass('is-offline');
     }
 
-
+    // --- Vista inicial ---
+    showView(viewFromHash());
+    updatePlayerUI();
 
     // --- Manejo de Atajos (Shortcuts) / Parámetros de URL ---
     const urlParams = new URLSearchParams(window.location.search);
-    
+    const action = urlParams.get('action');
+
     // 1. Atajo para reproducir automáticamente
     if (urlParams.get('play') === 'true') {
+        goTo('radio');
         setTimeout(() => {
             console.log('Parámetro play=true detectado. Sintonizando la señal...');
-            playBtn.click();
+            startPlayback();
         }, 500);
     }
 
     // 2. Atajo para abrir formulario de petición de oración
-    if (urlParams.get('action') === 'pray') {
-        setTimeout(() => {
-            console.log('Parámetro action=pray detectado. Mostrando modal de oración...');
-            openPrayerModal();
-        }, 600);
+    if (action === 'pray') {
+        goTo('oracion');
+        setTimeout(() => $prayerDetails.trigger('focus'), 300);
+    } else if (action === 'devocional') {
+        goTo('devocional');
+    }
+
+    // Limpiar los parámetros para que recargar la página no repita el atajo
+    if (urlParams.has('play') || action) {
+        history.replaceState(null, '', window.location.pathname + window.location.hash);
     }
 
 });

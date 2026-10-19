@@ -4,8 +4,8 @@
   "description": "Aplicación oficial de la Iglesia Toda la Gloria para Dios y Radio Bendición. Sintoniza nuestra radio en vivo y conoce nuestros ministerios.",
   "start_url": "/",
   "display": "standalone",
-  "background_color": "#f5fbff",
-  "theme_color": "#3556d8",
+  "background_color": "#f8f2ec",
+  "theme_color": "#b01e33",
   "orientation": "portrait",
   "icons": [
     {
