@@ -395,7 +395,7 @@ $(document).ready(function () {
     // --- Control de reconexión ---
     let reconnectTimeout = null;
     let retryCount = 0;
-    const MAX_RETRIES = 5;
+    const MAX_RETRIES = 8; // con espera creciente: ~1 minuto de reintentos (cambio Wi-Fi ↔ datos, red dormida)
 
     // --- Wake Lock y auto-resume para segundo plano ---
     let wakeLock = null;
@@ -469,6 +469,10 @@ $(document).ready(function () {
         navigator.mediaSession.setActionHandler('play', function () {
             if (!isPlayingState) {
                 startPlayback();
+            } else if (radioAudio.paused) {
+                // Play desde la pantalla de bloqueo cuando la señal quedó detenida
+                resetReconnect();
+                attemptReconnect();
             }
         });
         navigator.mediaSession.setActionHandler('pause', function () {
@@ -536,7 +540,15 @@ $(document).ready(function () {
         }).catch(err => {
             console.error("Fallo al reconectar:", err);
             // Si el error es debido a restricciones del navegador para reproducir sin interacción
-            if (err.name === 'NotAllowedError') {
+            if (err.name === 'NotAllowedError' && document.visibilityState === 'hidden') {
+                // Con la pantalla bloqueada el sistema puede impedir reiniciar el audio: no nos rendimos,
+                // se retoma al desbloquear o con el botón play de la pantalla de bloqueo
+                console.warn("Reinicio bloqueado en segundo plano. Se retomará al volver a la app.");
+                isBuffering = false;
+                resetReconnect();
+                updatePlayerUI();
+                updateMediaPlaybackState('paused');
+            } else if (err.name === 'NotAllowedError') {
                 console.warn("Reproducción automática bloqueada por el navegador. Deteniendo reconexión automática.");
                 isPlayingState = false;
                 isBuffering = false;
@@ -547,10 +559,9 @@ $(document).ready(function () {
                 showToast('El navegador pausó la radio. Toca reproducir para escuchar.');
                 releaseWakeLock();
             } else {
-                // Programar el siguiente intento para problemas de red
-                // Si la pantalla está bloqueada o en background (hidden), reintentamos más rápido (2s)
-                // antes de que el hilo JS sea completamente congelado por el OS.
-                const delay = document.visibilityState === 'hidden' ? 2000 : 4000;
+                // Programar el siguiente intento para problemas de red, esperando cada vez un poco más
+                // (2s, 4s, 6s… hasta 10s) para dar tiempo a que el teléfono recupere la conexión
+                const delay = Math.min(2000 * retryCount, 10000);
                 console.log(`Fallo de red. Programando reconexión en ${delay}ms...`);
                 reconnectTimeout = setTimeout(attemptReconnect, delay);
             }
@@ -652,6 +663,46 @@ $(document).ready(function () {
         }
     }
 
+    // --- Vigilante de la señal ---
+    // Si el audio deja de avanzar (corte de red, stream congelado), reconecta aunque la pantalla esté bloqueada
+    const STALL_LIMIT = 20000;
+    let watchdogInterval = null;
+    let lastProgressTime = 0;
+    let lastProgressAt = 0;
+
+    function startWatchdog() {
+        if (watchdogInterval) return;
+        lastProgressTime = radioAudio.currentTime;
+        lastProgressAt = Date.now();
+        watchdogInterval = setInterval(checkProgress, 5000);
+    }
+
+    function stopWatchdog() {
+        if (watchdogInterval) {
+            clearInterval(watchdogInterval);
+            watchdogInterval = null;
+        }
+    }
+
+    function checkProgress() {
+        if (!isPlayingState) {
+            stopWatchdog();
+            return;
+        }
+        if (radioAudio.currentTime !== lastProgressTime) {
+            lastProgressTime = radioAudio.currentTime;
+            lastProgressAt = Date.now();
+            return;
+        }
+        // Ya hay un reintento agendado o no hay red (el evento 'online' se encarga)
+        if (reconnectTimeout || !navigator.onLine) return;
+        if (Date.now() - lastProgressAt > STALL_LIMIT) {
+            console.warn('La señal no avanza hace 20 s. Reconectando...');
+            lastProgressAt = Date.now();
+            attemptReconnect();
+        }
+    }
+
     // Cargar metadatos iniciales una vez al abrir la página
     updateNowPlaying();
 
@@ -666,6 +717,7 @@ $(document).ready(function () {
         updateMediaPlaybackState('playing');
         updateMediaSession();
         requestWakeLock(); // Activar el wake lock cuando comience a sonar
+        startWatchdog();
     });
 
     $(radioAudio).on('playing', function () {
@@ -677,28 +729,18 @@ $(document).ready(function () {
         requestWakeLock(); // Asegurar wake lock activo
     });
 
-    $(radioAudio).on('waiting stalled', function (e) {
+    // Si el audio se estanca, primero dejamos que el navegador recupere el búfer;
+    // si no avanza en 20 s, el vigilante de la señal reconecta (también con la pantalla bloqueada)
+    $(radioAudio).on('waiting', function () {
         isBuffering = true;
         updatePlayerUI();
+    });
 
-        // Si el usuario quería reproducir pero el audio se estanca
-        if (isPlayingState && !reconnectTimeout) {
-            // Si la pantalla está bloqueada o en segundo plano, NO forzamos reconexión manual.
-            // Al hacer reasignación de src y .play() en segundo plano, el OS lo detecta como
-            // reproducción automática sin interacción del usuario y lanza NotAllowedError, matando la radio.
-            // Es mucho más seguro confiar en el buffering nativo del navegador cuando está en background.
-            if (document.visibilityState === 'hidden') {
-                console.log(`Señal estancada en segundo plano. Confiando en recuperación nativa del OS...`);
-                return;
-            }
-
-            // Si está visible, damos un margen de 15000ms para permitir buffering natural antes de forzar reconexión
-            const delay = 15000;
-            console.log(`Señal en espera o estancada (${e.type}). Agendando reconexión en ${delay}ms...`);
-            reconnectTimeout = setTimeout(() => {
-                reconnectTimeout = null;
-                attemptReconnect();
-            }, delay);
+    // En una radio en vivo, 'ended' significa que la red o el servidor cortó la conexión
+    $(radioAudio).on('ended', function () {
+        if (isPlayingState) {
+            console.warn('El stream se cortó. Reconectando...');
+            attemptReconnect();
         }
     });
 
@@ -712,7 +754,7 @@ $(document).ready(function () {
         if (!isPlayingState) {
             // Si el usuario pausó explícitamente, liberamos el wake lock
             releaseWakeLock();
-        } else if (navigator.onLine && !$body.hasClass('is-offline')) {
+        } else if (!radioAudio.ended && navigator.onLine && !$body.hasClass('is-offline')) {
             // El audio fue pausado por el OS/navegador inesperadamente en segundo plano
             console.warn("Audio pausado inesperadamente en segundo plano. Intentando recuperar reproducción...");
             const now = Date.now();
@@ -787,6 +829,7 @@ $(document).ready(function () {
         isPlayingState = false;
         isBuffering = false;
         resetReconnect();
+        stopWatchdog();
         radioAudio.pause();
         // Liberar conexión de red y detener descarga de datos móviles
         radioAudio.removeAttribute('src');
@@ -1399,11 +1442,9 @@ $(document).ready(function () {
                 reconnectTimeout = null;
             }
 
-            // Pausar la reproducción físicamente en el elemento de audio
-            radioAudio.pause();
-            isBuffering = false;
+            // No pausamos el audio: en cortes breves (pantalla bloqueada, cambio Wi-Fi ↔ datos)
+            // el búfer sigue sonando, y si la señal cae se reconecta al volver la red
             updatePlayerUI();
-            updateMediaPlaybackState('paused');
         }
     }
 
