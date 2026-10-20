@@ -1,0 +1,17 @@
+/* Fuentes incluidas en la app (en el sitio se cargan desde Google Fonts).
+   Así la app se ve igual sin conexión y no consulta servidores de terceros al abrir.
+   Solo el juego latino: cubre todo el texto en español. */
+@font-face {
+  font-family: 'Cormorant Garamond';
+  font-style: normal;
+  font-weight: 600 700;
+  font-display: swap;
+  src: url(../fonts/cormorant-garamond-latin.woff2) format('woff2');
+}
+@font-face {
+  font-family: 'Figtree';
+  font-style: normal;
+  font-weight: 400 700;
+  font-display: swap;
+  src: url(../fonts/figtree-latin.woff2) format('woff2');
+}

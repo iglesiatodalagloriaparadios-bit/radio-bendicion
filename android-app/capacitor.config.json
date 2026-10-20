@@ -1,0 +1,15 @@
+{
+  "appId": "com.radiobendicion.online",
+  "appName": "Radio Bendición",
+  "webDir": "www",
+  "plugins": {
+    "SplashScreen": {
+      "launchShowDuration": 800,
+      "showSpinner": false
+    },
+    "LocalNotifications": {
+      "smallIcon": "ic_stat_radio",
+      "iconColor": "#b01e33"
+    }
+  }
+}

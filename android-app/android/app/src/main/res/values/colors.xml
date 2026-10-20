@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Fondo de la app (igual que el fondo del sitio); en modo oscuro, values-night -->
+    <color name="app_background">#F8F2EC</color>
+</resources>

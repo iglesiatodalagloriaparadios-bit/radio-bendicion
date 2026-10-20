@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Recursos que los plugins buscan por nombre (no por R.drawable), para que shrinkResources no los borre:
+     ícono de los avisos del devocional (capacitor.config.json), pantalla de inicio y tema que aplica BridgeActivity -->
+<resources xmlns:tools="http://schemas.android.com/tools"
+    tools:keep="@drawable/ic_stat_radio,@drawable/splash,@drawable/splash_icon,@mipmap/ic_launcher*,@style/AppTheme.NoActionBar" />

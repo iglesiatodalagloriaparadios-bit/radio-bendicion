@@ -1,0 +1,7 @@
+node_modules/
+www/
+
+# Llave de firma de Play Store: nunca al repositorio
+*.jks
+*.keystore
+keystore.properties

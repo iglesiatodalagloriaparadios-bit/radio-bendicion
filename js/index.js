@@ -47,6 +47,22 @@ $(document).ready(function () {
     let isBuffering = false;
     let connectFailed = false;  // el último intento de conexión falló
 
+    // --- App Android (Play Store, Capacitor) ---
+    // Dentro de la app la radio la reproduce un servicio nativo de Android (sigue sonando con la
+    // pantalla bloqueada); compartir, avisos y botón atrás también usan funciones nativas.
+    const IS_NATIVE_APP = !!(window.Capacitor && Capacitor.isNativePlatform && Capacitor.isNativePlatform());
+    const Native = IS_NATIVE_APP ? {
+        RadioPlayer: Capacitor.registerPlugin('RadioPlayer'),
+        Share: Capacitor.registerPlugin('Share'),
+        Filesystem: Capacitor.registerPlugin('Filesystem'),
+        LocalNotifications: Capacitor.registerPlugin('LocalNotifications'),
+        App: Capacitor.registerPlugin('App'),
+        StatusBar: Capacitor.registerPlugin('StatusBar')
+    } : null;
+    const SITE_URL = IS_NATIVE_APP ? 'https://radiobendicion.cl' : (window.location.origin || 'https://radiobendicion.cl');
+    const PLAY_STORE_URL = 'https://play.google.com/store/apps/details?id=com.radiobendicion.online';
+    $body.toggleClass('is-native-app', IS_NATIVE_APP);
+
     // --- Registro del Service Worker para PWA con Detección de Actualizaciones ---
     // Cuando hay una versión nueva se ofrece el botón "Actualizar" (aviso flotante y tarjeta en "Más");
     // la app nunca se recarga sola, así no se corta la radio ni se pierde lo que se está escribiendo.
@@ -55,7 +71,8 @@ $(document).ready(function () {
     let waitingWorker = null;
     let manualUpdateCheck = false;
 
-    if ('serviceWorker' in navigator) {
+    // En la app Android las actualizaciones llegan por Play Store: no se usa el Service Worker
+    if ('serviceWorker' in navigator && !IS_NATIVE_APP) {
         // Comprobar actualizaciones cada vez que se vuelve a abrir la app (entra en primer plano)
         document.addEventListener('visibilitychange', () => {
             if (document.visibilityState === 'visible' && swRegistration) {
@@ -146,6 +163,10 @@ $(document).ready(function () {
 
     // Botón "Buscar actualizaciones" en "Más"
     $('.js-check-update').on('click', function () {
+        if (IS_NATIVE_APP) {
+            window.open(PLAY_STORE_URL, '_blank');
+            return;
+        }
         if (!swRegistration) {
             showToast('No se pudo buscar actualizaciones en este navegador.');
             return;
@@ -176,6 +197,10 @@ $(document).ready(function () {
 
     // Mostrar la versión instalada (la informa el Service Worker)
     function showAppVersion() {
+        if (IS_NATIVE_APP) {
+            Native.App.getInfo().then(info => $('#appVersion').text('v' + info.version)).catch(() => {});
+            return;
+        }
         const controller = navigator.serviceWorker.controller;
         if (!controller || typeof MessageChannel === 'undefined') return;
         const channel = new MessageChannel();
@@ -186,9 +211,9 @@ $(document).ready(function () {
     }
 
     // --- Tema claro / oscuro ---
-    function setTheme(theme) {
+    function setTheme(theme, save = true) {
         document.documentElement.setAttribute('data-theme', theme);
-        storageSet('theme', theme);
+        if (save) storageSet('theme', theme);
         $('.js-theme').attr('aria-label', theme === 'dark' ? 'Cambiar a modo claro' : 'Cambiar a modo oscuro');
         updateThemeColor();
     }
@@ -199,6 +224,10 @@ $(document).ready(function () {
         const onRadio = $body.attr('data-view') === 'radio';
         const color = onRadio ? '#921628' : (dark ? '#171214' : '#f8f2ec');
         $('meta[name="theme-color"]').attr('content', color);
+        if (IS_NATIVE_APP) {
+            // Íconos claros sobre la portada roja o el modo oscuro; oscuros sobre fondo claro
+            Native.StatusBar.setStyle({ style: onRadio || dark ? 'DARK' : 'LIGHT' }).catch(() => {});
+        }
     }
 
     // Vibración breve al tocar (solo Android; en el resto no hace nada)
@@ -218,7 +247,17 @@ $(document).ready(function () {
         });
     }
 
-    setTheme(storageGet('theme') === 'dark' ? 'dark' : 'light');
+    const savedTheme = storageGet('theme');
+    if (IS_NATIVE_APP && !savedTheme) {
+        // App Android: mientras no se elija un tema, se sigue el modo claro/oscuro del teléfono
+        const systemDark = window.matchMedia('(prefers-color-scheme: dark)');
+        setTheme(systemDark.matches ? 'dark' : 'light', false);
+        systemDark.addEventListener('change', (e) => {
+            if (!storageGet('theme')) setTheme(e.matches ? 'dark' : 'light', false);
+        });
+    } else {
+        setTheme(savedTheme === 'dark' ? 'dark' : 'light');
+    }
 
     $('.js-theme').on('click', function () {
         setTheme(document.documentElement.getAttribute('data-theme') === 'dark' ? 'light' : 'dark');
@@ -500,6 +539,8 @@ $(document).ready(function () {
     }
 
     function attemptReconnect() {
+        // En la app Android el reproductor nativo se reconecta solo
+        if (IS_NATIVE_APP) return;
         // Si el usuario pausó manualmente o no hay conexión de red, no hacemos nada
         if (!isPlayingState || !navigator.onLine) {
             resetReconnect();
@@ -600,7 +641,7 @@ $(document).ready(function () {
             statusText = retryCount > 0
                 ? `Reconectando (${retryCount} de ${MAX_RETRIES})…`
                 : 'Conectando con la señal…';
-        } else if (isPlayingState && radioAudio.paused) {
+        } else if (isPlayingState && radioAudio.paused && !IS_NATIVE_APP) {
             state = 'busy';
             statusText = 'Recuperando el audio…';
         } else if (isPlayingState) {
@@ -801,6 +842,14 @@ $(document).ready(function () {
             showToast('No tienes conexión a internet para reproducir la radio.');
             return;
         }
+        if (IS_NATIVE_APP) {
+            applyNativeState('buffering');
+            Native.RadioPlayer.play().catch(err => {
+                console.error('Error al reproducir:', err);
+                applyNativeState('error');
+            });
+            return;
+        }
         isPlayingState = true;
         isBuffering = true;
         connectFailed = false;
@@ -826,6 +875,11 @@ $(document).ready(function () {
     }
 
     function stopPlayback() {
+        if (IS_NATIVE_APP) {
+            applyNativeState('paused');
+            Native.RadioPlayer.pause().catch(() => {});
+            return;
+        }
         isPlayingState = false;
         isBuffering = false;
         resetReconnect();
@@ -838,6 +892,24 @@ $(document).ready(function () {
         releaseWakeLock();
         updateMediaPlaybackState('paused');
         updatePlayerUI();
+    }
+
+    // App Android: la interfaz refleja el estado del reproductor nativo, que también se controla
+    // desde la notificación, la pantalla de bloqueo o los audífonos
+    function applyNativeState(state) {
+        isPlayingState = state === 'playing' || state === 'buffering';
+        isBuffering = state === 'buffering';
+        connectFailed = state === 'error';
+        if (isPlayingState) {
+            startMetadataPolling();
+        } else {
+            stopMetadataPolling();
+        }
+        updatePlayerUI();
+    }
+
+    if (IS_NATIVE_APP) {
+        Native.RadioPlayer.addListener('state', data => applyNativeState(data.state));
     }
 
     $(document).on('click', '.js-toggle-play', function () {
@@ -1012,6 +1084,10 @@ $(document).ready(function () {
     const SCHEDULE_IMAGE = '/images/programacion-semanal.png';
 
     $('.js-share-schedule').on('click', async function () {
+        if (IS_NATIVE_APP) {
+            shareScheduleNative();
+            return;
+        }
         try {
             const blob = await (await fetch(SCHEDULE_IMAGE)).blob();
             const file = new File([blob], 'programacion-radio-bendicion.png', { type: 'image/png' });
@@ -1036,6 +1112,34 @@ $(document).ready(function () {
         link.remove();
         showToast('Descargamos la imagen de la programación para que la compartas.');
     });
+
+    // App Android: guardar el póster en el caché de la app y abrir el menú de compartir del sistema
+    async function shareScheduleNative() {
+        try {
+            const blob = await (await fetch(SCHEDULE_IMAGE)).blob();
+            const base64 = await new Promise((resolve, reject) => {
+                const reader = new FileReader();
+                reader.onload = () => resolve(String(reader.result).split(',')[1]);
+                reader.onerror = reject;
+                reader.readAsDataURL(blob);
+            });
+            const saved = await Native.Filesystem.writeFile({
+                path: 'programacion-radio-bendicion.png',
+                data: base64,
+                directory: 'CACHE'
+            });
+            await Native.Share.share({
+                title: 'Programación semanal · Radio Bendición',
+                text: 'Programación semanal de Radio Bendición. Escúchanos en radiobendicion.cl',
+                files: [saved.uri],
+                dialogTitle: 'Compartir programación'
+            });
+        } catch (err) {
+            if (err && /cancel/i.test(err.message || '')) return; // el usuario cerró el menú
+            console.warn('No se pudo compartir la imagen:', err);
+            showToast('No se pudo compartir la imagen.');
+        }
+    }
 
     // --- Reuniones de la iglesia (portada en escritorio, "Más" en móvil) ---
     const DAY_NAMES = ['Domingo', 'Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado'];
@@ -1146,10 +1250,12 @@ $(document).ready(function () {
         const shareData = {
             title: 'Radio Bendición',
             text: 'Escucha Radio Bendición en vivo: música y Palabra las 24 horas.',
-            url: window.location.origin || window.location.href
+            url: SITE_URL
         };
 
-        if (navigator.share && navigator.canShare && navigator.canShare(shareData)) {
+        if (IS_NATIVE_APP) {
+            Native.Share.share({ ...shareData, dialogTitle: 'Compartir Radio Bendición' }).catch(() => {});
+        } else if (navigator.share && navigator.canShare && navigator.canShare(shareData)) {
             navigator.share(shareData)
                 .then(() => console.log('Señal compartida con éxito'))
                 .catch((err) => console.log('Error al compartir:', err));
@@ -1247,7 +1353,7 @@ $(document).ready(function () {
             `_"${d.pasaje}"_ (${d.cita})\n\n` +
             `*Reflexión:* ${d.reflexion}\n\n` +
             `*Oración:* ${d.oracion}\n\n` +
-            `Escucha la señal en vivo en: ${window.location.origin || 'https://radiobendicion.cl'}`;
+            `Escucha la señal en vivo en: ${SITE_URL}`;
     }
 
     function renderDevotional(day) {
@@ -1345,16 +1451,111 @@ $(document).ready(function () {
         sendWelcomeNotification();
     }
 
+    // App Android: avisos locales programados para los próximos 30 días a las 7:00,
+    // cada uno con el devocional de ese día. Se renuevan cada vez que se abre la app.
+    const NOTIFY_HOUR = 7;
+    const NOTIFY_DAYS = 30;
+
+    async function scheduleNativeDevotionals() {
+        const LN = Native.LocalNotifications;
+        // Canal con nombre propio en los ajustes de notificaciones del teléfono
+        await LN.createChannel({
+            id: 'devocional',
+            name: 'Devocional diario',
+            description: 'Aviso cada mañana con el devocional del día',
+            importance: 3
+        });
+        const pending = await LN.getPending();
+        if (pending.notifications.length) {
+            await LN.cancel({ notifications: pending.notifications.map(n => ({ id: n.id })) });
+        }
+        const now = new Date();
+        const notifications = [];
+        for (let i = 0; i <= NOTIFY_DAYS; i++) {
+            const at = new Date(now.getFullYear(), now.getMonth(), now.getDate() + i, NOTIFY_HOUR, 0, 0);
+            const d = DEVOTIONALS_DB[at.getDate()];
+            if (at <= now || !d) continue;
+            notifications.push({
+                id: 1000 + i,
+                title: 'Devocional de hoy · Radio Bendición',
+                body: `${d.titulo} (${d.cita})`,
+                schedule: { at, allowWhileIdle: true },
+                isExactNotification: false,
+                channelId: 'devocional',
+                extra: { view: 'devocional' }
+            });
+        }
+        await LN.schedule({ notifications });
+    }
+
+    async function cancelNativeDevotionals() {
+        const LN = Native.LocalNotifications;
+        const pending = await LN.getPending();
+        if (pending.notifications.length) {
+            await LN.cancel({ notifications: pending.notifications.map(n => ({ id: n.id })) });
+        }
+    }
+
+    async function toggleNativeNotifications() {
+        if (devotionalNotifyBtn.attr('aria-pressed') === 'true') {
+            storageSet('devotional-notifications', 'unsubscribed');
+            updateNotifyBtnUI(false);
+            cancelNativeDevotionals().catch(() => {});
+            showToast('Avisos desactivados.');
+            return;
+        }
+        try {
+            let perm = await Native.LocalNotifications.checkPermissions();
+            if (perm.display !== 'granted') {
+                perm = await Native.LocalNotifications.requestPermissions();
+            }
+            if (perm.display !== 'granted') {
+                showToast('Las notificaciones están desactivadas. Actívalas en los ajustes del teléfono.', null, 5000);
+                return;
+            }
+            await scheduleNativeDevotionals();
+            storageSet('devotional-notifications', 'subscribed');
+            updateNotifyBtnUI(true);
+            showToast(`¡Listo! Cada mañana a las ${NOTIFY_HOUR}:00 te llegará el devocional.`, null, 4500);
+        } catch (err) {
+            console.warn('No se pudieron programar los avisos:', err);
+            showToast('No se pudieron activar los avisos.');
+        }
+    }
+
     // Verificar preferencia previa
     const isSubscribed = storageGet('devotional-notifications') === 'subscribed';
-    const notificationsActive = isSubscribed && supportsNotifications && Notification.permission === 'granted';
-    updateNotifyBtnUI(notificationsActive);
-    if (notificationsActive) {
-        // Renovar el registro por si el navegador lo descartó
-        registerDailySync();
+    if (IS_NATIVE_APP) {
+        updateNotifyBtnUI(isSubscribed);
+        if (isSubscribed) {
+            Native.LocalNotifications.checkPermissions().then(perm => {
+                if (perm.display === 'granted') return scheduleNativeDevotionals();
+                // Se quitó el permiso desde los ajustes del teléfono
+                updateNotifyBtnUI(false);
+            }).catch(err => console.warn('No se pudieron renovar los avisos:', err));
+        }
+        // Al tocar el aviso se abre el devocional del día
+        Native.LocalNotifications.addListener('localNotificationActionPerformed', action => {
+            const view = action.notification && action.notification.extra && action.notification.extra.view;
+            if (view) {
+                renderDevotional(new Date().getDate());
+                goTo(view);
+            }
+        });
+    } else {
+        const notificationsActive = isSubscribed && supportsNotifications && Notification.permission === 'granted';
+        updateNotifyBtnUI(notificationsActive);
+        if (notificationsActive) {
+            // Renovar el registro por si el navegador lo descartó
+            registerDailySync();
+        }
     }
 
     devotionalNotifyBtn.on('click', function () {
+        if (IS_NATIVE_APP) {
+            toggleNativeNotifications();
+            return;
+        }
         if (!supportsNotifications) {
             showToast('Tu navegador no permite notificaciones. Abre la app para leer el devocional del día.', null, 5000);
             return;
@@ -1461,30 +1662,59 @@ $(document).ready(function () {
     showView(viewFromHash());
     updatePlayerUI();
 
+    // --- App Android: botón atrás y versión ---
+    if (IS_NATIVE_APP) {
+        showAppVersion();
+        // Atrás: cierra la guía abierta, vuelve a Radio desde otra pestaña y en Radio
+        // manda la app al fondo (la radio sigue sonando) en vez de cerrarla
+        Native.App.addListener('backButton', () => {
+            if (!$iosGuide.prop('hidden')) {
+                closeIosGuide();
+            } else if (currentView !== 'radio') {
+                goTo('radio');
+            } else {
+                Native.App.minimizeApp();
+            }
+        });
+    }
+
     // --- Manejo de Atajos (Shortcuts) / Parámetros de URL ---
+    // En la PWA llegan en la URL (manifest.json); en la app, desde los accesos directos del ícono
+    function handleLaunchParams(params) {
+        const action = params.get('action');
+
+        // 1. Atajo para reproducir automáticamente
+        if (params.get('play') === 'true') {
+            goTo('radio');
+            setTimeout(() => {
+                console.log('Parámetro play=true detectado. Sintonizando la señal...');
+                if (!isPlayingState) startPlayback();
+            }, 500);
+        }
+
+        // 2. Atajo para abrir formulario de petición de oración
+        if (action === 'pray') {
+            goTo('oracion');
+            setTimeout(() => $prayerDetails.trigger('focus'), 300);
+        } else if (action === 'devocional') {
+            renderDevotional(new Date().getDate());
+            goTo('devocional');
+        }
+    }
+
     const urlParams = new URLSearchParams(window.location.search);
-    const action = urlParams.get('action');
-
-    // 1. Atajo para reproducir automáticamente
-    if (urlParams.get('play') === 'true') {
-        goTo('radio');
-        setTimeout(() => {
-            console.log('Parámetro play=true detectado. Sintonizando la señal...');
-            startPlayback();
-        }, 500);
-    }
-
-    // 2. Atajo para abrir formulario de petición de oración
-    if (action === 'pray') {
-        goTo('oracion');
-        setTimeout(() => $prayerDetails.trigger('focus'), 300);
-    } else if (action === 'devocional') {
-        goTo('devocional');
-    }
+    handleLaunchParams(urlParams);
 
     // Limpiar los parámetros para que recargar la página no repita el atajo
-    if (urlParams.has('play') || action) {
+    if (urlParams.has('play') || urlParams.has('action')) {
         history.replaceState(null, '', window.location.pathname + window.location.hash);
     }
 
+    if (IS_NATIVE_APP) {
+        Native.App.addListener('appUrlOpen', ({ url }) => {
+            try {
+                handleLaunchParams(new URL(url).searchParams);
+            } catch (e) { /* URL no válida */ }
+        });
+    }
 });

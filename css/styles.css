@@ -45,8 +45,9 @@
   --shadow-md: 0 3px 10px rgba(46, 43, 37, 0.16);
   --shadow-lg: 0 12px 32px rgba(46, 43, 37, 0.22);
 
-  --safe-top: env(safe-area-inset-top, 0px);
-  --safe-bottom: env(safe-area-inset-bottom, 0px);
+  /* En la app Android, Capacitor entrega los márgenes del sistema como --safe-area-inset-* */
+  --safe-top: var(--safe-area-inset-top, env(safe-area-inset-top, 0px));
+  --safe-bottom: var(--safe-area-inset-bottom, env(safe-area-inset-bottom, 0px));
 }
 
 :root[data-theme="dark"] {
@@ -1039,6 +1040,9 @@ body.has-mini .toast { bottom: calc(162px + var(--safe-bottom)); }
   .dev-side { top: 80px; }
   .view-dev, .view-pray, .view-app { padding-top: 20px; }
 }
+
+/* App Android (Play Store): ya está instalada, no se ofrece instalarla */
+.is-native-app .app-card { display: none; }
 
 /* Menos movimiento para quien lo prefiera */
 @media (prefers-reduced-motion: reduce) {

@@ -1,0 +1,14 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">Radio Bendición</string>
+    <string name="title_activity_main">Radio Bendición</string>
+    <string name="package_name">com.radiobendicion.online</string>
+    <string name="custom_url_scheme">com.radiobendicion.online</string>
+    <!-- Accesos directos al mantener presionado el ícono (res/xml/shortcuts.xml) -->
+    <string name="shortcut_play_short">En vivo</string>
+    <string name="shortcut_play_long">Escuchar en vivo</string>
+    <string name="shortcut_devotional_short">Devocional</string>
+    <string name="shortcut_devotional_long">Devocional de hoy</string>
+    <string name="shortcut_prayer_short">Pedir oración</string>
+    <string name="shortcut_prayer_long">Enviar una petición de oración</string>
+</resources>

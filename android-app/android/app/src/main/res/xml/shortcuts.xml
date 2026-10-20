@@ -1,0 +1,38 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Accesos directos del ícono (los mismos de manifest.json en la PWA).
+     La URL llega a la página por el evento appUrlOpen; ver handleLaunchParams en js/index.js. -->
+<shortcuts xmlns:android="http://schemas.android.com/apk/res/android">
+    <shortcut
+        android:shortcutId="play"
+        android:icon="@drawable/shortcut_play"
+        android:shortcutShortLabel="@string/shortcut_play_short"
+        android:shortcutLongLabel="@string/shortcut_play_long">
+        <intent
+            android:action="android.intent.action.VIEW"
+            android:data="com.radiobendicion.online://abrir?play=true"
+            android:targetPackage="com.radiobendicion.online"
+            android:targetClass="com.radiobendicion.online.MainActivity" />
+    </shortcut>
+    <shortcut
+        android:shortcutId="devocional"
+        android:icon="@drawable/shortcut_devotional"
+        android:shortcutShortLabel="@string/shortcut_devotional_short"
+        android:shortcutLongLabel="@string/shortcut_devotional_long">
+        <intent
+            android:action="android.intent.action.VIEW"
+            android:data="com.radiobendicion.online://abrir?action=devocional"
+            android:targetPackage="com.radiobendicion.online"
+            android:targetClass="com.radiobendicion.online.MainActivity" />
+    </shortcut>
+    <shortcut
+        android:shortcutId="oracion"
+        android:icon="@drawable/shortcut_prayer"
+        android:shortcutShortLabel="@string/shortcut_prayer_short"
+        android:shortcutLongLabel="@string/shortcut_prayer_long">
+        <intent
+            android:action="android.intent.action.VIEW"
+            android:data="com.radiobendicion.online://abrir?action=pray"
+            android:targetPackage="com.radiobendicion.online"
+            android:targetClass="com.radiobendicion.online.MainActivity" />
+    </shortcut>
+</shortcuts>

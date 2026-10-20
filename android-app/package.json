@@ -1,0 +1,29 @@
+{
+  "name": "radio-bendicion-android",
+  "version": "1.0.0",
+  "private": true,
+  "description": "App Android de Radio Bendición (Capacitor). La interfaz es el mismo sitio web de la carpeta superior.",
+  "scripts": {
+    "copy-web": "node scripts/copy-web.mjs",
+    "sync": "npm run copy-web && cap sync android",
+    "open": "cap open android",
+    "assets": "node scripts/make-assets.cjs && capacitor-assets generate --android --splashBackgroundColor \"#f8f2ec\" --splashBackgroundColorDark \"#171214\" && node scripts/make-icons.cjs"
+  },
+  "dependencies": {
+    "@capacitor/android": "^8.5.3",
+    "@capacitor/app": "^8.1.2",
+    "@capacitor/core": "^8.5.3",
+    "@capacitor/filesystem": "^8.1.5",
+    "@capacitor/local-notifications": "^8.3.1",
+    "@capacitor/share": "^8.0.3",
+    "@capacitor/splash-screen": "^8.0.2",
+    "@capacitor/status-bar": "^8.0.4"
+  },
+  "devDependencies": {
+    "@capacitor/assets": "^3.0.5",
+    "@capacitor/cli": "^8.5.3"
+  },
+  "allowScripts": {
+    "sharp@0.32.6": true
+  }
+}
